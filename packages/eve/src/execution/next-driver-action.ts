@@ -15,11 +15,22 @@ import type { DurableSessionState } from "#execution/durable-session-store.js";
 import type { SettledTurn, StepResult } from "#harness/types.js";
 import type { TokenUsage } from "#shared/token-usage.js";
 
-interface DurableStepResultFields {
-  readonly backgroundTaskState?: DurableSessionState;
-  readonly backgroundTasks?: StepResult["backgroundTasks"];
+export interface DurableTransition {
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
+}
+
+export interface DurableCommitBarrier {
+  readonly effect: {
+    readonly kind: "release-background-tasks";
+    readonly tasks: NonNullable<StepResult["backgroundTasks"]>;
+  };
+  readonly transition: DurableTransition;
+}
+
+interface DurableStepResultFields extends DurableTransition {
+  readonly cancellationTransition?: DurableTransition;
+  readonly commitBarrier?: DurableCommitBarrier;
 }
 
 /** Result returned by the latest turn step to its durable driver workflow. */

@@ -1,4 +1,8 @@
 import { buildAdapterContext } from "#channel/adapter-context.js";
+import { AgentLoopBatch, preserveCancelledTurnMessage } from "#execution/agent-loop-batch.js";
+import { resumeAgentLoopCheckpoint } from "#execution/agent-loop-checkpoint.js";
+import { AGENT_LOOP_STEPS_PER_WORKFLOW_STEP } from "#execution/agent-loop-config.js";
+import { finalizeTurnStepResult } from "#execution/finalize-turn-step-result.js";
 import { callAdapterEventHandler, defaultDeliverResult } from "#channel/adapter.js";
 import type { DeliverHookPayload } from "#channel/types.js";
 import { contextStorage } from "#context/container.js";
@@ -22,7 +26,6 @@ import {
 import {
   AuthKey,
   CapabilitiesKey,
-  HandleEventKey,
   ModeKey,
   SessionDynamicSubagentRuntimeRevisionKey,
   SessionDynamicToolRuntimeRevisionKey,
@@ -50,16 +53,9 @@ import { matchAuthorizationCallbacks } from "#execution/authorization-callback-m
 import { readTurnSleepDurationMs } from "#harness/turn-sleep.js";
 import { isTurnCancellation, throwIfTurnAborted } from "#harness/turn-cancellation.js";
 import { setChannelContext } from "#execution/channel-context.js";
-import { hasPendingInputBatch } from "#harness/input-requests.js";
 import { activeTurnId } from "#harness/active-turn-id.js";
-import { coalesceTurnInputs, normalizeUserContent } from "#harness/messages.js";
-import {
-  getRuntimeActionKeysFromWorkflowInterrupt,
-  isWorkflowRuntimeActionInterrupt,
-} from "#harness/workflow-runtime-action-state.js";
-import { getPendingWorkflowInterrupt } from "#harness/workflow-interrupt-state.js";
+import { coalesceTurnInputs } from "#harness/messages.js";
 import type { HarnessSession, StepInput, StepResult } from "#harness/types.js";
-import { getTurnUsageState, takeSessionUsageDelta, toUsage } from "#harness/turn-tag-state.js";
 import type { DurableStepResult } from "#execution/next-driver-action.js";
 import { derivePendingState } from "#execution/pending-turn-state.js";
 import {
@@ -87,10 +83,7 @@ import {
   resolveInitiatingTaskContext,
   resolveTaskDeliveryContext,
 } from "#tasks/delivery-context.js";
-import {
-  readRetainedBackgroundToolResult,
-  runBackgroundStep,
-} from "#execution/tasks/parent/tool-execution.js";
+import { readRetainedBackgroundToolResult } from "#execution/tasks/parent/tool-execution.js";
 import {
   isTaskOwnedSerializedContext,
   TASK_UPDATE_SESSION_INSTRUCTION,
@@ -104,10 +97,6 @@ import { createExecutionHistoryView } from "#execution/history-view.js";
 import { resolveRuntimeCompiledArtifactsVersionedCacheKey } from "#runtime/cache-key.js";
 import { createWorkflowRuntime } from "#execution/workflow-runtime.js";
 import { isTaskToolAvailable, TASK_UPDATE_TOOL_NAME } from "#runtime/framework-tools/tasks.js";
-import { stageAttachmentsToSandbox } from "#harness/attachment-staging.js";
-
-const TASK_DONE_WITH_PENDING_INPUT_ERROR_MESSAGE =
-  "Task mode cannot complete while input requests remain pending.";
 
 export type { TurnStepInput };
 
@@ -117,15 +106,19 @@ export type { TurnStepInput };
 export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResult> {
   "use step";
 
-  let input = rawInput;
-
+  const resumed = await resumeAgentLoopCheckpoint({
+    enabled: AGENT_LOOP_STEPS_PER_WORKFLOW_STEP > 1,
+    rawInput,
+  });
+  const { checkpoint } = resumed;
+  let input = resumed.stepInput;
   let durableSession = await readDurableSession(input.sessionState);
   const ctx = await deserializeContext(input.serializedContext);
-  if (rawInput.input?.kind === "deliver") {
+  if (checkpoint === undefined && rawInput.input?.kind === "deliver") {
     ctx.set(TurnTaskDeliveryKey, "none");
     ctx.delete(TurnTaskStateKey);
   }
-  const adapter = ctx.require(ChannelKey);
+  let adapter = ctx.require(ChannelKey);
   const bundle = ctx.require(BundleKey);
   const tasksEnabled = bundle.resolvedAgent.config?.experimental?.tasks === true;
   ctx.set(TasksEnabledKey, tasksEnabled);
@@ -196,8 +189,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   const history = createExecutionHistoryView(initialSession);
   const instrumentation = getInstrumentationRuntime();
   const initialEmissionState = getHarnessEmissionState(initialSession.state);
-
-  if (rawInput.input?.kind === "deliver") {
+  if (checkpoint === undefined && rawInput.input?.kind === "deliver") {
     await contextStorage.run(ctx, () =>
       instrumentChannelDelivery({
         agentName: bundle.turnAgent.id,
@@ -225,8 +217,11 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
     );
     await instrumentation?.forceFlush();
   };
-  const adapterCtx = buildAdapterContext(adapter, ctx);
-
+  let adapterCtx = buildAdapterContext(adapter, ctx);
+  const refreshAdapterContext = (): void => {
+    adapter = ctx.require(ChannelKey);
+    adapterCtx = buildAdapterContext(adapter, ctx);
+  };
   // Run the adapter's deliver hook for each queued payload and
   // coalesce the resulting StepInput values.
   let resolved: StepInput | undefined;
@@ -254,7 +249,6 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
     }
     resolved = { runtimeActionResults: input.input.results };
   }
-
   if (
     resolved !== undefined &&
     rawInput.input?.kind === "deliver" &&
@@ -272,7 +266,6 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       };
     }
   }
-
   if (tasksEnabled && ctx.get(TurnTaskDeliveryKey) === "none") {
     const taskContext = resolveInitiatingTaskContext({
       state: durableSession.state,
@@ -283,7 +276,6 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       ctx.set(TurnTaskStateKey, taskContext.context);
     }
   }
-
   // Persist adapter-state mutations across the step boundary.
   if (input.input?.kind === "deliver") {
     const updatedAdapter = { ...adapter, state: { ...adapterCtx.state } };
@@ -425,15 +417,58 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   };
 
   const mode = ctx.require(ModeKey);
-
+  const batch = new AgentLoopBatch(
+    input.abortSignal,
+    ctx,
+    initialSession,
+    input.sessionState,
+    input.serializedContext,
+    checkpoint,
+  );
   let stepResult: StepResult;
   try {
     // A signal already aborted at entry (cancellation during an in-line
     // runtime-action wait) must settle before the park-resume stages run,
     // or the pending batch would re-park and later re-dispatch.
     throwIfTurnAborted(input.abortSignal);
-    stepResult = await runBackgroundStep(ctx, initialSession, async (enrichedSession) => {
-      ctx.setVirtualContext(HandleEventKey, handleEvent);
+    const capabilities = ctx.get(CapabilitiesKey);
+    const runHarnessStep = async (
+      lifecycleSession: HarnessSession,
+      stepInput: StepInput | undefined,
+      applyCommand: boolean,
+    ): Promise<StepResult> => {
+      const refreshedSession = refreshSessionFromTurnAgent({
+        compactionOverrides: {
+          thresholdPercent: effectiveAgent.thresholdPercent,
+        },
+        session: lifecycleSession,
+        systemPromptAdditions: taskUpdatesEnabled ? [TASK_UPDATE_SESSION_INSTRUCTION] : undefined,
+        turnAgent: effectiveAgent.turnAgent,
+      });
+      const modelSession = tasksEnabled
+        ? await appendTaskAgentAnnouncement(refreshedSession, history.messages(refreshedSession))
+        : refreshedSession;
+      const step = createExecutionNodeStep({
+        abortSignal: input.abortSignal,
+        capabilities,
+        clearOnly: applyCommand && input.input?.kind === "clear",
+        compactOnly: applyCommand && input.input?.kind === "compact",
+        createRuntime: createWorkflowRuntime,
+        handleEvent,
+        historyProjector: history.projector,
+        historyView: history.prepare(modelSession),
+        mode,
+        modelResolutionScope: {
+          moduleMap: bundle.moduleMap,
+          nodeId: bundle.nodeId,
+        },
+        node: effectiveNode,
+        workflowMaxSubagents: refreshedSession.workflowMaxSubagents,
+      });
+      return step(modelSession, stepInput);
+    };
+
+    stepResult = await batch.run(initialSession, handleEvent, async (enrichedSession) => {
       let schemaSession = resolveEffectiveOutputSchema({
         agentOutputSchema: effectiveAgent.turnAgent.outputSchema,
         input: resolved,
@@ -487,46 +522,21 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
         }
       }
 
-      const capabilities = ctx.get(CapabilitiesKey);
-
-      const runHarnessStep = async (
-        lifecycleSession: HarnessSession,
-        stepInput: StepInput | undefined,
-      ): Promise<StepResult> => {
-        const refreshedSession = refreshSessionFromTurnAgent({
-          compactionOverrides: {
-            thresholdPercent: effectiveAgent.thresholdPercent,
-          },
-          session: lifecycleSession,
-          systemPromptAdditions: taskUpdatesEnabled ? [TASK_UPDATE_SESSION_INSTRUCTION] : undefined,
-          turnAgent: effectiveAgent.turnAgent,
-        });
-        const modelSession = tasksEnabled
-          ? await appendTaskAgentAnnouncement(refreshedSession, history.messages(refreshedSession))
-          : refreshedSession;
-
-        const step = createExecutionNodeStep({
-          abortSignal: input.abortSignal,
-          capabilities,
-          clearOnly: input.input?.kind === "clear",
-          compactOnly: input.input?.kind === "compact",
-          createRuntime: createWorkflowRuntime,
-          handleEvent,
-          historyProjector: history.projector,
-          historyView: history.prepare(modelSession),
-          mode,
-          modelResolutionScope: {
-            moduleMap: bundle.moduleMap,
-            nodeId: bundle.nodeId,
-          },
-          node: effectiveNode,
-          workflowMaxSubagents: refreshedSession.workflowMaxSubagents,
-        });
-        return step(modelSession, stepInput);
-      };
-
-      return runHarnessStep(schemaSession, resolved);
+      return runHarnessStep(schemaSession, resolved, true);
     });
+
+    while (
+      batch.completedSteps < AGENT_LOOP_STEPS_PER_WORKFLOW_STEP &&
+      typeof stepResult.next === "function" &&
+      readTurnSleepDurationMs(ctx) === undefined &&
+      stepResult.backgroundTasks === undefined
+    ) {
+      await batch.commitContinuation();
+      stepResult = await batch.run(stepResult.session, handleEvent, (session) => {
+        refreshAdapterContext();
+        return runHarnessStep(session, undefined, false);
+      });
+    }
   } catch (error) {
     if (!isTurnCancellation(error)) {
       await failChannelDeliveries(error);
@@ -539,142 +549,46 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
     // again after this cancellation settles.
     const interrupted = serializeContext(ctx);
     const retained = readRetainedBackgroundToolResult(ctx);
-    const cancelledSession = await preserveCancelledTurnMessage(
-      retained?.backgroundTaskSession ?? initialSession,
-      resolved,
+    let cancelledState = batch.checkpointSessionState();
+    if (retained !== undefined || cancelledState === undefined) {
+      let cancelledSession = retained?.backgroundTaskSession ?? batch.checkpointSession();
+      if (batch.completedSteps === 0) {
+        cancelledSession = await preserveCancelledTurnMessage(cancelledSession, resolved);
+      }
+      cancelledState = createDurableSessionState({ session: cancelledSession });
+    }
+    const serializedContext = preserveSerializedInstrumentationState(
+      preserveSerializedAgentTraceState(
+        preserveSerializedSessionDynamicModelSelection(
+          batch.checkpointSerializedContext(),
+          interrupted,
+        ),
+        interrupted,
+      ),
+      interrupted,
     );
+    const transition = { serializedContext, sessionState: cancelledState };
     return {
       action: "cancelled",
       ...(retained === undefined
         ? {}
         : {
-            backgroundTaskState: createDurableSessionState({ session: cancelledSession }),
-            backgroundTasks: retained.backgroundTasks,
+            cancellationTransition: transition,
+            commitBarrier: {
+              effect: { kind: "release-background-tasks", tasks: retained.backgroundTasks },
+              transition,
+            },
           }),
-      serializedContext: preserveSerializedInstrumentationState(
-        preserveSerializedAgentTraceState(
-          preserveSerializedSessionDynamicModelSelection(input.serializedContext, interrupted),
-          interrupted,
-        ),
-        interrupted,
-      ),
-      sessionState: createDurableSessionState({ session: cancelledSession }),
+      ...transition,
     };
   }
 
-  // Re-stamp if a handler called `session.continuation.rekey(...)` (eg. Slack auto-anchor).
-  const rekeyed = reconcileSessionContinuationToken(ctx, stepResult.session);
-  const nextSerializedContext = serializeContext(ctx);
-  stepResult = { ...stepResult, session: rekeyed };
-
-  const nextState = createDurableSessionState({ session: stepResult.session });
-  const sleepDurationMs = readTurnSleepDurationMs(ctx);
-  const sleepTransition = sleepDurationMs === undefined ? {} : { sleepDurationMs };
-  const backgroundTransition =
-    stepResult.backgroundTasks === undefined || stepResult.backgroundTaskSession === undefined
-      ? {}
-      : {
-          backgroundTaskState: createDurableSessionState({
-            session: stepResult.backgroundTaskSession,
-          }),
-          backgroundTasks: stepResult.backgroundTasks,
-        };
-
-  if (
-    stepResult.next !== null &&
-    typeof stepResult.next === "object" &&
-    "done" in stepResult.next
-  ) {
-    if (mode === "task" && hasPendingInputBatch(stepResult.session.state)) {
-      writer.releaseLock();
-      throw new Error(TASK_DONE_WITH_PENDING_INPUT_ERROR_MESSAGE);
-    }
-    await writer.close();
-    const sessionTotals = getTurnUsageState(stepResult.session.state)?.session;
-    return {
-      action: "done",
-      ...backgroundTransition,
-      output: stepResult.next.output,
-      isError: stepResult.next.isError,
-      ...sleepTransition,
-      serializedContext: nextSerializedContext,
-      sessionState: nextState,
-      usage: sessionTotals === undefined ? undefined : toUsage(sessionTotals),
-      usageDelta: takeSessionUsageDelta(stepResult.session).delta,
-    };
-  }
-
-  if (stepResult.next === null) {
-    writer.releaseLock();
-
-    const workflowInterrupt = getPendingWorkflowInterrupt(stepResult.session.state);
-    if (
-      workflowInterrupt !== undefined &&
-      isWorkflowRuntimeActionInterrupt(workflowInterrupt.interrupt)
-    ) {
-      return {
-        action: "dispatch-workflow-runtime-actions",
-        ...backgroundTransition,
-        pendingRuntimeActionKeys: getRuntimeActionKeysFromWorkflowInterrupt(
-          workflowInterrupt.interrupt,
-        ),
-        ...sleepTransition,
-        serializedContext: nextSerializedContext,
-        sessionState: nextState,
-      };
-    }
-
-    const pending = derivePendingState(stepResult.session);
-
-    // `settledTurn` is the harness's explicit settlement verdict. Pending
-    // state may predate this turn, while newly created parks omit the verdict.
-    // `usage` carries only this turn's delta: the take marks the totals
-    // reported, so a persistent child never re-reports earlier spend.
-    if (stepResult.settledTurn !== undefined) {
-      const { delta, session: reportedSession } = takeSessionUsageDelta(stepResult.session);
-      return {
-        action: "park",
-        ...backgroundTransition,
-        ...pending,
-        ...sleepTransition,
-        serializedContext: nextSerializedContext,
-        sessionState: createDurableSessionState({ session: reportedSession }),
-        settled: {
-          output: stepResult.settledTurn.output,
-          isError: stepResult.settledTurn.isError,
-          usage: delta,
-        },
-        tasksEnabled,
-      };
-    }
-
-    return {
-      action: "park",
-      ...backgroundTransition,
-      ...pending,
-      ...sleepTransition,
-      serializedContext: nextSerializedContext,
-      sessionState: nextState,
-      tasksEnabled,
-    };
-  }
-
-  writer.releaseLock();
-  return {
-    action: "continue",
-    ...backgroundTransition,
-    ...sleepTransition,
-    serializedContext: nextSerializedContext,
-    sessionState: nextState,
-  };
-}
-
-async function preserveCancelledTurnMessage(
-  session: HarnessSession,
-  input: StepInput | undefined,
-): Promise<HarnessSession> {
-  const message = normalizeUserContent(input?.message);
-  if (message === undefined) return session;
-  const content = await stageAttachmentsToSandbox(message);
-  return { ...session, history: [...session.history, { content, role: "user" }] };
+  return finalizeTurnStepResult({
+    batch,
+    ctx,
+    mode,
+    stepResult,
+    tasksEnabled,
+    writer,
+  });
 }
