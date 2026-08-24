@@ -1,5 +1,14 @@
 # @eve/self-modification
 
+## 5.0.5
+
+### Patch Changes
+
+- b595a70: When a self-modification registry search finds an exact item in a local `eve dev` session, the subagent now directs you to install it with `/add <address>` instead of attempting the installation itself.
+- Updated dependencies [4a18994]
+- Updated dependencies [80571ee]
+  - eve@0.44.5
+
 ## 5.0.4
 
 ### Patch Changes

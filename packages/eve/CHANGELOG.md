@@ -1,5 +1,12 @@
 # eve
 
+## 0.44.5
+
+### Patch Changes
+
+- 4a18994: Keep tools available during follow-up turns while an earlier tool approval remains unresolved, allowing unrelated work to continue without resolving the pending call.
+- 80571ee: Show declared environment variables and an eve setup link after adding a registry integration from the dev TUI. Chat SDK adapter links open the integration page's Configure section.
+
 ## 0.44.4
 
 ### Patch Changes
