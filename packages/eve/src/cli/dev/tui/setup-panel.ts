@@ -629,7 +629,6 @@ function appendSelectOptionRows(input: {
     width,
     theme,
   } = input;
-  const c = theme.colors;
   let renderedTrailingTaskAction = false;
 
   for (let index = start; index < end; index += 1) {
@@ -695,7 +694,7 @@ function appendSelectOptionRows(input: {
     // Disabled descriptions explain why an inert row cannot be selected, so
     // keep them visible even though the cursor skips that row.
     if (option.description !== undefined && (option.disabled === true || isCursor)) {
-      rows.push(`  ${renderOptionRowContinuation(c.dim(option.description))}`);
+      rows.push(`  ${renderOptionRowContinuation(theme.colors.dim(option.description))}`);
     }
     if (presentation.layout === "stacked" && index < end - 1) rows.push("");
   }
@@ -763,6 +762,35 @@ function selectFooterHints(
   return hints;
 }
 
+function appendFocusedDescriptionSlot(input: {
+  rows: string[];
+  options: readonly SetupPanelOption[];
+  cursor: number;
+  width: number;
+  theme: Theme;
+}): void {
+  const { rows, options, cursor, width, theme } = input;
+  const maxLines = Math.max(
+    0,
+    ...options.map((option) =>
+      option.focusDescription === undefined
+        ? 0
+        : wrapVisibleLine(option.focusDescription, Math.max(1, width - 4)).length,
+    ),
+  );
+  if (maxLines === 0) return;
+
+  const description = options[cursor]?.focusDescription;
+  const lines =
+    description === undefined
+      ? []
+      : wrapVisibleLine(description, Math.max(1, width - 4)).map((line) => theme.colors.dim(line));
+  for (let index = 0; index < maxLines; index += 1) {
+    rows.push(`  ${lines[index] ?? ""}`);
+  }
+  rows.push("");
+}
+
 function renderActionQuestion(
   state: SetupActionsPanelState,
   theme: Theme,
@@ -827,6 +855,8 @@ export function renderSelectQuestion(
     }
     rows.push("");
   }
+
+  appendFocusedDescriptionSlot({ rows, options: visible, cursor, width, theme });
 
   if (presentation.filter !== undefined) {
     // The railed filter line indents one extra cell so its rail sits in the

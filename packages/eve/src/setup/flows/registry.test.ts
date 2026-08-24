@@ -111,7 +111,7 @@ describe("runRegistryFlow", () => {
         expect.objectContaining({
           label: "Web Chat",
           hint: "Channel",
-          description: "A chat UI for your agent",
+          focusDescription: "A chat UI for your agent",
         }),
       ]),
     });

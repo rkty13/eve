@@ -75,7 +75,7 @@ function projectConnectionOption(
     value: "ai-gateway-project",
     label: "AI Gateway via Project",
     hint: "Recommended",
-    description: "Uses your Vercel project. No API key to manage.",
+    focusDescription: "Uses your Vercel project. No API key to manage.",
   };
   const disabledReason = authStatus === undefined ? undefined : vercelAuthBlockerReason(authStatus);
   return disabledReason === undefined
@@ -96,7 +96,7 @@ function providerOptions(
     value: "ai-gateway-key",
     label: `AI Gateway via ${AI_GATEWAY_API_KEY_ENV_VAR}`,
     hint: "API key",
-    description: "Use an existing AI Gateway key.",
+    focusDescription: "Use an existing AI Gateway key.",
   };
   if (selectedProvider === "ai-gateway-key") {
     gatewayKey = { ...gatewayKey, checked: true, hint: "Current" };
@@ -109,14 +109,14 @@ function providerOptions(
       value: "chatgpt",
       label: "ChatGPT subscription",
       hint: selectedProvider === "chatgpt" ? "Current" : "Codex account",
-      description: "Authenticate through the Codex CLI.",
+      focusDescription: "Authenticate through the Codex CLI.",
       checked: selectedProvider === "chatgpt" || undefined,
     },
     {
       value: "external",
       label: "Other providers",
       hint: "Direct API key",
-      description: "Use your provider's API key in .env.local.",
+      focusDescription: "Use your provider's API key in .env.local.",
     },
   ];
 }

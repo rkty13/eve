@@ -62,7 +62,7 @@ function sectionRows(
     value: item.address,
     label: label(item),
     hint: itemKind(item),
-    description: item.description,
+    focusDescription: item.description,
     ...(featured.has(item.name) ? { featured: true } : {}),
   }));
 }

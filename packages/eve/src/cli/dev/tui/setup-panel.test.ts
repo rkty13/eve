@@ -817,13 +817,13 @@ describe("renderSelectQuestion", () => {
         value: "ai-gateway-project",
         label: "AI Gateway via Project",
         hint: "Recommended",
-        description: "Uses your Vercel project. No API key to manage.",
+        focusDescription: "Uses your Vercel project. No API key to manage.",
       },
       {
         value: "ai-gateway-key",
         label: "AI Gateway via AI_GATEWAY_API_KEY",
         hint: "API key",
-        description: "Use an existing AI Gateway key.",
+        focusDescription: "Use an existing AI Gateway key.",
       },
     ];
     const selected = renderSelectQuestion(
