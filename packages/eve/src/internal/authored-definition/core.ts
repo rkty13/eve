@@ -260,10 +260,17 @@ function normalizeAgentExperimentalDefinition(
   const record = expectObjectRecord(value, message);
   expectOnlyKnownKeys(
     record,
-    ["instrumentationProviders", "subagentPersistentSessions", "tasks", "workflow"],
+    ["codeMode", "instrumentationProviders", "subagentPersistentSessions", "tasks", "workflow"],
     message,
   );
   const normalizedDefinition: Mutable<NonNullable<NormalizedAgentDefinition["experimental"]>> = {};
+
+  if (record.codeMode !== undefined) {
+    if (record.codeMode !== false && record.codeMode !== "eager" && record.codeMode !== "lazy") {
+      throw new Error(`${message} "experimental.codeMode" must be false, "eager", or "lazy".`);
+    }
+    normalizedDefinition.codeMode = record.codeMode;
+  }
 
   if (record.instrumentationProviders !== undefined) {
     if (typeof record.instrumentationProviders !== "boolean") {

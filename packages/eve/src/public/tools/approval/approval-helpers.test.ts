@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { always, never, once } from "#public/tools/approval/approval-helpers.js";
+import { always, isNeverApproval, never, once } from "#public/tools/approval/approval-helpers.js";
 import { readDurableDynamicCallback } from "#shared/durable-dynamic-tool-callbacks.js";
 
 describe("dynamic tool approval helpers", () => {
+  it("identifies only never policies as statically unapproved", () => {
+    expect(isNeverApproval(never())).toBe(true);
+    expect(isNeverApproval(always())).toBe(false);
+    expect(isNeverApproval(once())).toBe(false);
+  });
+
   it.each([
     ["always", always(), "user-approval"],
     ["never", never(), "not-applicable"],

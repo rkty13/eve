@@ -282,6 +282,15 @@ export interface ToolLoopHarnessConfig {
   readonly capabilities?: SessionCapabilities;
   /** Clears model-message history without running a model turn. */
   readonly clearOnly?: boolean;
+  /**
+   * Runs the agent's ordinary executable tools through the experimental
+   * `code_mode` sandbox tool instead of direct tool calls; claimed tools
+   * leave the direct model surface. Resolved from `experimental.codeMode` in
+   * the agent config. `"eager"` inlines every sandboxed tool signature in the
+   * tool description; `"lazy"` lists names only and generated code discovers
+   * signatures at runtime. Unset means no sandbox tool.
+   */
+  readonly codeMode?: "eager" | "lazy";
   /** Forces one context-compaction pass without running a model turn. */
   readonly compactOnly?: boolean;
   /**

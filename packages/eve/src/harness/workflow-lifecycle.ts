@@ -17,7 +17,7 @@ const log = createLogger("harness.workflow-lifecycle");
 
 type EmitWorkflowLifecycleEvent = (event: UnstampedMessageStreamEvent) => Promise<void>;
 
-/** Projects sandboxed subagent calls onto eve's existing action event stream. */
+/** Projects sandboxed host-tool calls onto eve's existing action event stream. */
 export function createWorkflowLifecycle(input: {
   readonly emit: EmitWorkflowLifecycleEvent;
   readonly emissionState: HarnessEmissionState;
