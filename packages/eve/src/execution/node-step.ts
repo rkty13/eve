@@ -121,7 +121,6 @@ export function createExecutionNodeStep(input: CreateExecutionNodeStepInput): St
     mode: input.mode,
     onCompaction: preserveFrameworkStateOnCompaction,
     persistentSubagentSessions:
-      input.node.agent.config?.experimental?.tasks === true ||
       input.node.agent.config?.experimental?.subagentPersistentSessions === true,
     dispatchDynamicModelEvent: dispatchModelEvent,
     resolveModel,
@@ -225,7 +224,7 @@ export function createNodeHarnessTools(input: {
     const implicitAgent = {
       description: AGENT_TOOL_DESCRIPTION,
       inputSchema:
-        tasksEnabled || input.node.agent.config?.experimental?.subagentPersistentSessions === true
+        input.node.agent.config?.experimental?.subagentPersistentSessions === true
           ? PERSISTENT_SUBAGENT_TOOL_INPUT_SCHEMA
           : SUBAGENT_TOOL_INPUT_SCHEMA,
       kind: "subagent" as const,

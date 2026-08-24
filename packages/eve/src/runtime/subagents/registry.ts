@@ -53,9 +53,9 @@ export const SUBAGENT_TOOL_INPUT_SCHEMA = z.strictObject({
 });
 
 /**
- * Extended subagent tool input schema for agents that opt into
- * `experimental.subagentPersistentSessions`: adds the `agentId` field the
- * model uses to continue a previous delegation.
+ * Extended subagent tool input schema for agents that use persistent
+ * subagent sessions: adds the `agentId` field the model uses to continue a
+ * previous delegation.
  */
 export const PERSISTENT_SUBAGENT_TOOL_INPUT_SCHEMA = SUBAGENT_TOOL_INPUT_SCHEMA.extend({
   agentId: z
@@ -73,7 +73,7 @@ const PERSISTENT_SUBAGENT_TOOL_INPUT_JSON_SCHEMA = serializeInputSchema(
   PERSISTENT_SUBAGENT_TOOL_INPUT_SCHEMA,
 );
 
-/** Selects the serialized subagent tool input schema for one agent's opt-in state. */
+/** Selects the serialized subagent tool input schema for one agent's runtime mode. */
 export function getSubagentToolInputJsonSchema(persistentSessions: boolean): JsonObject {
   return persistentSessions
     ? PERSISTENT_SUBAGENT_TOOL_INPUT_JSON_SCHEMA
@@ -86,9 +86,9 @@ export function getSubagentToolInputJsonSchema(persistentSessions: boolean): Jso
  */
 export function createRuntimeSubagentRegistry(input: {
   /**
-   * Whether the owning agent opted into
-   * `experimental.subagentPersistentSessions`. Adds the model-visible
-   * `agentId` continuation field to every lowered subagent tool schema.
+   * Whether the owning agent uses persistent subagent sessions. Adds the
+   * model-visible `agentId` continuation field to every lowered subagent tool
+   * schema.
    */
   readonly persistentSessions?: boolean;
   readonly reservedToolNames?: readonly string[];
