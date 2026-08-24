@@ -12,30 +12,23 @@ Give registry discovery one eve-owned implementation that can be reused by:
 
 - `eve registry list/search/view`;
 - `eve add`;
-- the dev TUI's `/add` flow; and
-- `@eve/self-modification` discovery.
+- the dev TUI's `/add` flow;
+- `@eve/self-modification` discovery; and
+- a development-only self-modification tool that installs a registry item after
+  explicit user approval.
 
-The immediate public need is read-only discovery. `@eve/self-modification` is a
-separately published package, so it needs a narrow `eve/registry` entrypoint
-rather than a private CLI import or its own parser for the official index.
-
-Installation remains an internal eve capability in this phase. The CLI, TUI,
-and a development-mode agent action can share it without publishing a general
-project-mutation API. A production self-modification executor may create a need
-for a public mutation API later, but that API should be designed with the
-production executor rather than anticipated here.
+`@eve/self-modification` is a separately published package, so it needs a narrow
+public entrypoint rather than private CLI imports or its own parser for the
+official index. The public surface should serve these concrete read and tool
+adapter use cases without exposing a general project-mutation API.
 
 This extraction is not required for the initial guided self-modification
 handoff. Until it lands, self-modification can search the official index and ask
-the developer to type `/add <address>` manually. See
-[`selfmod-development-setup-actions.md`](./selfmod-development-setup-actions.md).
+the developer to type `/add <address>` manually.
 
 ## Current architecture
 
-Most registry behavior lives in
-`packages/eve/src/cli/commands/registry.ts`. Despite exporting TypeScript
-functions within the repository, that module is private because no `eve`
-package export reaches it.
+Most registry behavior lives in `packages/eve/src/cli/commands/registry.ts`.
 
 The module currently combines:
 
@@ -52,7 +45,10 @@ The module currently combines:
 The setup flow and package helpers add TUI rendering, confirmation, setup fact
 aggregation, project preparation, and deployment follow-up.
 
-The vendored registry client currently exposes address-oriented operations:
+## Thin wrapper over shadcn registries
+
+eve uses the shadcn registry protocol and vendored client. The client already
+provides the core address-oriented operations:
 
 ```ts
 searchRegistries(sources, options);
@@ -60,16 +56,25 @@ getRegistryItems(addresses, options);
 addRegistryItems(addresses, options);
 ```
 
-These are internal implementation details and must not be re-exported from
-`eve/registry`. In particular, `addRegistryItems` means “install these addressed
-items into a project”; it does not publish an item to a registry.
+The extracted code should remain a thin eve-specific wrapper around those
+operations. eve adds only behavior the generic client cannot know:
+
+- built-in and project registry configuration;
+- official-source classification;
+- eve metadata, version requirements, and package components;
+- official-only setup eligibility;
+- project preparation required by eve items; and
+- adaptation to CLI, TUI, and tool interaction.
+
+`addRegistryItems` means “install these addressed items into a project”; it does
+not publish an item to a registry and is not itself a public eve API.
 
 ## Proposed boundary
 
-### Public `eve/registry` API
+### Public discovery
 
-The initial public API is read-only and serves the concrete cross-package use
-case:
+Add a narrow `eve/registry` package export for the separately published
+self-modification package:
 
 ```ts
 import { searchRegistryItems } from "eve/registry";
@@ -83,123 +88,130 @@ const result = await searchRegistryItems({
 });
 ```
 
-The exact names can be finalized during implementation, but the entrypoint
-should expose an eve-owned result containing only the fields discovery needs:
-canonical address, title, description, category, and package component
-summaries. It must not expose vendored shadcn types, raw manifests, configured
-headers or parameters, CLI logging, terminal state, or mutable process state.
+The self-modification caller searches the official registry only.
 
-The self-modification caller searches the official registry only. Internally,
-the same search implementation also supports the configured and URL sources
-needed by existing CLI and TUI behavior. Public support for selecting arbitrary
-sources should be added only when an external caller needs it.
+## Development self-modification tools
 
-Search remains bounded, preserves partial results when one source fails, and
-validates malformed catalog entries at the boundary. Category matching includes
-package components so that a package can match a channel or extension search.
+The extension exposes two narrow tools:
 
-### Internal registry operations
+- `selfmod__search_registry` searches the official catalog through the public
+  read API; and
+- `selfmod__add_registry` accepts an official registry address and installs it
+  into the current development project after mandatory tool approval.
 
-Internal modules own the shared behavior needed to:
+### Why not expose the eve binary
 
-- read registry configuration and compose built-in sources;
-- resolve canonical addresses without confusing configured or URL sources with
-  eve's official source;
-- search catalogs and normalize partial failures;
-- load and validate manifests and package components;
-- inspect the files, dependencies, environment variable names, and setup
-  declared by an item; and
-- install an inspected item and run eligible setup through an explicit caller
-  policy.
+The self-modification sandbox deliberately cannot execute host binaries. Giving
+it raw access to `eve` would expose much more than registry operations,
+including project configuration, linking, deployment, and other commands. Even
+`eve add` accepts flags and sources that can install third-party files and
+packages, run setup, or weaken an informed approval boundary.
 
-Callers continue to own interaction and authorization concerns:
+The typed adapter instead exposes one address, applies source and flag policy in
+trusted code, derives the application root from runtime state, and returns a
+bounded structured result. It reuses the same underlying registry behavior as
+`eve add` without making the complete CLI a model capability.
 
-- the CLI owns flags, prompts, logging, NDJSON, and exit codes;
-- `/add` owns browsing, confirmation, exclusive terminal use, host refresh,
-  add-more behavior, and deployment follow-up;
-- the development agent-action executor owns capability checks, request
-  correlation, HITL approval, project-mutation locking, and model resumption;
-- all callers choose the application root and authorize mutation before
-  installation.
+### Tool lifecycle
 
-The shared implementation may use an internal inspect/apply split because a UI
-must show an item before installing it. That split is not a public API
-commitment.
+The development add flow is:
 
-## Source and trust rules
+1. The model finds an official item with `selfmod__search_registry` and calls
+   `selfmod__add_registry({ address })`.
+2. eve requests standard tool approval. The user sees the tool name and registry
+   address; the model cannot approve its own call.
+3. The adapter reports installed addresses, known changed paths, partial failure,
+   and whether interactive setup remains.
 
-Source identity is an internal security and presentation concern, not a claim
-about who authored an integration's npm package. Items in eve's catalog may
-integrate third-party products while still being official-source items.
+## Interactive setup handoff
 
-Preserve these existing rules:
+The tool never runs registry-declared setup. This avoids trying to drive setup
+questions, project selection, browser authentication, device codes, or external
+actions inside an active model tool call.
 
-- relative official addresses resolve through eve's trusted official source;
-- configured namespaces resolve through project registry configuration;
-- direct URLs remain visibly non-official;
-- configured headers and URL parameters never appear in results, model context,
-  errors, or durable events; and
-- only manifests resolved from eve's trusted official source may declare
-  executable eve setup behavior or registry packages.
+When an installed item declares setup, the result instructs the user to run:
 
-CLI and TUI presentation still needs a safe source label so developers can see
-what they are about to install. The initial public self-modification search does
-not need a general `RegistrySourceSummary` union because it is official-only.
+```text
+/add <address> --skip-install
+```
 
-## Development agent-initiated add
+For example, after installing Slack, the TUI shows that the item was added but
+still requires setup and prompts the developer to run:
 
-The first mutation use case outside the existing commands is development mode,
-where an agent asks the connected eve host to add a known registry address. The
-agent must not receive a filesystem mutation API or call the vendored installer
-directly.
+```text
+/add channel/slack --skip-install
+```
 
-The intended flow is:
+That command enters the existing TUI-owned interactive setup flow, which can
+open the browser, show authentication instructions, collect answers, handle
+cancellation, and report deployment follow-up. Extend `/add` argument parsing to
+recognize `--skip-install` and route it to setup without reinstalling files or
+packages. The model must not invoke the continuation itself or claim setup is
+complete before the developer finishes it.
 
-1. The model invokes a framework-owned add action with a registry address.
-2. The harness accepts it only when the session advertises a local registry-add
-   capability and records a correlated pending request.
-3. The TUI resolves and inspects the item through the internal registry
-   implementation.
-4. The TUI shows the source and expected effects and obtains confirmation that
-   the model cannot answer. Initial releases should require approval for every
-   item.
-5. On approval, the TUI acquires the existing project-mutation boundary,
-   installs through the same internal primitive as `/add`, runs any eligible
-   interactive setup, refreshes the development host, and settles the pending
-   tool call.
-6. On rejection or cancellation, no installation begins and the tool call is
-   settled with that outcome.
+Items without declared setup complete in the original tool call. Clients that
+cannot present tool approval retain the manual `/add <address>` handoff and do
+not expose `selfmod__add_registry`.
 
-Clients without this capability retain the guided handoff: self-modification
-returns an exact `/add <address>` command for the local TUI or an
-`eve add <address>` command for the project terminal.
+## Future TUI-mediated setup
 
-The inspected item and the installed item should be the same content. The
-current vendored `addRegistryItems` operation resolves an address again, so it
-cannot by itself guarantee this. Before enabling direct agent-initiated
-installation, perform a focused spike to determine whether the vendored
-boundary can apply already-resolved content. If not, keep the guided `/add`
-handoff until eve owns the minimal installer seam required to preserve the
-approval boundary. The serialization format, hashing scheme, closure limits,
-and public plan shape are deliberately deferred.
+A later development flow may keep the self-modification tool call open while the
+TUI conducts setup on its behalf. This would support setup that requires several
+answers, browser authentication, a device code, project selection, or another
+external action.
 
-Installation remains non-transactional, as `eve add` is today. Development
-callers should report partial failure clearly and refresh or restart the host
-from known state. Transactional installation is not part of this extraction.
+Treat this as a host interaction protocol rather than registry logic or direct
+TUI access for the subagent:
+
+1. The approved add tool installs the item and emits a correlated setup request.
+2. The harness parks the tool call and forwards trusted setup events to a client
+   that advertised the corresponding capability.
+3. The TUI renders questions and external actions through its existing setup
+   components. Browser URLs and device codes come from trusted setup execution,
+   not model-authored text.
+4. Authenticated user responses route back to the pending setup operation. The
+   model cannot answer, alter, or mark a request complete.
+5. Completion, cancellation, timeout, disconnect, or partial failure settles the
+   original tool call, after which the development host refreshes as needed.
+
+The protocol must use versioned request identities, reject stale or duplicate
+responses, preserve delegated-session routing, serialize setup with source edits
+and other project mutation, and recheck the responding principal. Capability
+negotiation is required because remote clients and older TUIs may not support
+these interactions; they continue to receive the explicit
+`/add <address> --skip-install` handoff.
+
+Do not add these hooks to the initial tool adapter. Design them when a concrete
+setup flow shows that the manual continuation is insufficient, and keep setup
+rendering and browser behavior in the TUI rather than `eve/registry` or
+`@eve/self-modification`.
+
+## Future production API
+
+A production executor would apply an approved item to an isolated proposal
+checkout without a connected TUI. That may require a public mutation surface
+supporting an explicit application root, noninteractive policy, stronger
+content binding, cancellation, and structured changed-path and partial-failure
+results.
+
+Do not finalize that surface here. Production authorization, sandboxing,
+egress, package lifecycle policy, integrity, diff validation, and pull request
+publication must be designed with the executor. First decide whether the
+executor can remain inside eve and reuse internal operations.
 
 ## Completion criteria
 
 This extraction is complete when:
 
-- registry search and manifest semantics have one implementation;
-- `eve registry`, `eve add`, and `/add` are adapters over shared internal
-  operations;
-- `@eve/self-modification` uses the public read-only entrypoint instead of
-  parsing the official catalog itself;
-- source credentials and vendored registry types cannot cross the public or
-  model-facing boundary;
-- setup remains restricted to trusted official-source items;
-- the development action either installs the exact inspected content after HITL
-  approval or remains on the guided `/add` fallback; and
-- no public project-mutation API is introduced without a concrete external
-  executor.
+- registry source, search, manifest, and installation semantics are not
+  reimplemented by each adapter;
+- `eve registry`, `eve add`, and `/add` preserve their existing behavior;
+- self-modification discovery uses the public read API rather than a private
+  catalog parser;
+- the development add tool installs official items only after explicit user
+  approval and never exposes the raw eve binary;
+- interactive setup is resumed explicitly through
+  `/add <address> --skip-install`;
+- the internal layer remains a thin wrapper over the vendored shadcn client; and
+- no general public mutation API is introduced without a concrete production
+  caller.
