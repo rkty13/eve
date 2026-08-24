@@ -27,7 +27,7 @@ import type {
   RuntimeSubagentCallActionRequest,
 } from "#runtime/actions/types.js";
 import { SUBAGENT_TASK_RECEIPT_OUTPUT_SCHEMA } from "#runtime/framework-tools/tasks.js";
-import { PERSISTENT_SUBAGENT_TOOL_INPUT_SCHEMA } from "#runtime/subagents/registry.js";
+import { SUBAGENT_TOOL_INPUT_SCHEMA } from "#runtime/subagents/registry.js";
 import { parseJsonObject } from "#shared/json.js";
 import { createSubagentExecutorBinding } from "#tasks/types.js";
 import { activeTurnId } from "#harness/active-turn-id.js";
@@ -76,7 +76,7 @@ export function defineSubagent(input: SubagentDefinitionInput) {
   const definition = defineTool({
     description: input.description,
     execution: "background",
-    inputSchema: PERSISTENT_SUBAGENT_TOOL_INPUT_SCHEMA,
+    inputSchema: SUBAGENT_TOOL_INPUT_SCHEMA,
     outputSchema: SUBAGENT_TASK_RECEIPT_OUTPUT_SCHEMA,
     execute: (toolInput, ctx, task) =>
       executeSubagentTool({ definition: input, kind: "local", task, toolContext: ctx, toolInput }),
@@ -107,7 +107,7 @@ export async function executeSubagentTool(input: {
   const commonAction = {
     callId: input.toolContext.callId,
     description: input.definition.description,
-    input: parseJsonObject(PERSISTENT_SUBAGENT_TOOL_INPUT_SCHEMA.parse(input.toolInput)),
+    input: parseJsonObject(SUBAGENT_TOOL_INPUT_SCHEMA.parse(input.toolInput)),
     name: input.definition.name,
     nodeId: input.definition.nodeId,
   };
@@ -239,7 +239,6 @@ async function dispatchSubagent(input: SubagentDispatchInput): Promise<SubagentD
           initiatorAuth: prepared.initiatorAuth,
           parentContinuationToken: input.task.taskInboxToken,
           parentTraceContext: prepared.parentTraceContext,
-          persistentSessions: true,
           sandboxSessionId: prepared.sandboxSessionId,
           serializedContext: prepared.serializedContext,
           session: prepared.session,

@@ -139,6 +139,27 @@ describe("compiledAgentManifestSchema", () => {
     });
   });
 
+  it("rejects the removed persistent-session field in compiled manifests", () => {
+    const manifest = createCompiledAgentManifest({
+      agentRoot: "/app/agent",
+      appRoot: "/app",
+      config: {
+        model: { id: "openai/gpt-5.5", routing: classifyModelRouting("openai/gpt-5.5") },
+        name: "app",
+      },
+    });
+
+    expect(() =>
+      compiledAgentManifestSchema.parse({
+        ...manifest,
+        config: {
+          ...manifest.config,
+          experimental: { subagentPersistentSessions: true },
+        },
+      }),
+    ).toThrow();
+  });
+
   it("rejects the removed maxSubagentDepth limit", () => {
     const manifest = createCompiledAgentManifest({
       agentRoot: "/app/agent",

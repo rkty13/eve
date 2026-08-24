@@ -292,7 +292,7 @@ describe("createNodeHarnessTools", () => {
         agent: {
           ...node.agent,
           config: {
-            experimental: { subagentPersistentSessions: true, tasks: true },
+            experimental: { tasks: true },
             model: { id: "test-model" },
             name: "test",
           },
@@ -335,7 +335,7 @@ describe("createNodeHarnessTools", () => {
         agent: {
           ...node.agent,
           config: {
-            experimental: { subagentPersistentSessions: tasks || undefined, tasks },
+            experimental: { tasks },
             model: { id: "test-model" },
             name: "test",
           },
@@ -374,7 +374,7 @@ describe("createNodeHarnessTools", () => {
         agent: {
           ...node.agent,
           config: {
-            experimental: { subagentPersistentSessions: true, tasks: true },
+            experimental: { tasks: true },
             model: { id: "test-model" },
             name: "test",
           },

@@ -34,10 +34,7 @@ import type { ResolvedRuntimeAgentNode } from "#runtime/graph.js";
 import type { HistoryViewProjector, PreparedHistoryView } from "#shared/history-view.js";
 
 import type { PreparedRuntimeTool } from "#runtime/sessions/turn.js";
-import {
-  PERSISTENT_SUBAGENT_TOOL_INPUT_SCHEMA,
-  SUBAGENT_TOOL_INPUT_SCHEMA,
-} from "#runtime/subagents/registry.js";
+import { SUBAGENT_TOOL_INPUT_SCHEMA } from "#runtime/subagents/registry.js";
 import { findRegisteredRuntimeTool } from "#runtime/tools/registry.js";
 import type { ResolvedToolDefinition } from "#runtime/types.js";
 import { preserveFrameworkStateOnCompaction } from "#execution/compaction.js";
@@ -120,8 +117,6 @@ export function createExecutionNodeStep(input: CreateExecutionNodeStepInput): St
     instrumentation,
     mode: input.mode,
     onCompaction: preserveFrameworkStateOnCompaction,
-    persistentSubagentSessions:
-      input.node.agent.config?.experimental?.subagentPersistentSessions === true,
     dispatchDynamicModelEvent: dispatchModelEvent,
     resolveModel,
     runtimeIdentity: buildRuntimeIdentity(input.node),
@@ -223,10 +218,7 @@ export function createNodeHarnessTools(input: {
   ) {
     const implicitAgent = {
       description: AGENT_TOOL_DESCRIPTION,
-      inputSchema:
-        input.node.agent.config?.experimental?.subagentPersistentSessions === true
-          ? PERSISTENT_SUBAGENT_TOOL_INPUT_SCHEMA
-          : SUBAGENT_TOOL_INPUT_SCHEMA,
+      inputSchema: SUBAGENT_TOOL_INPUT_SCHEMA,
       kind: "subagent" as const,
       name: AGENT_TOOL_NAME,
       nodeId: input.node.nodeId,

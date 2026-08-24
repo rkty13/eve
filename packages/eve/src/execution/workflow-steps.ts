@@ -321,8 +321,6 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   const dynamicInstructionsResolvers = bundle.resolvedAgent.dynamicInstructionsResolvers ?? [];
   const dynamicSkillResolvers = bundle.resolvedAgent.dynamicSkillResolvers ?? [];
   const dynamicSubagentResolvers = bundle.subagentRegistry.dynamicResolvers ?? [];
-  const persistentSubagentSessions =
-    bundle.resolvedAgent.config?.experimental?.subagentPersistentSessions === true;
   const dynamicToolResolvers = bundle.resolvedAgent.dynamicToolResolvers ?? [];
   const effectiveNode = {
     ...bundle.graph.root,
@@ -347,7 +345,6 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
           resolvers: dynamicSubagentResolvers,
           event: refreshEvent,
           messages: history.initial.messages,
-          persistentSessions: persistentSubagentSessions,
           runtimeRevision: dynamicRuntimeRevision,
         }),
         refreshDynamicSessionToolsForRuntimeRevision({
@@ -402,7 +399,6 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       resolvers: dynamicSubagentResolvers,
       event: emitted,
       messages: messages ?? [],
-      persistentSessions: persistentSubagentSessions,
     });
     await dispatchDynamicToolEvent({
       ctx,
