@@ -3864,17 +3864,35 @@ describe("TerminalRenderer setup panel", () => {
     const answer = renderer.setupFlow.readProviderPicker({
       message: "Provider",
       options: [
-        { value: "ai-gateway-project", label: "AI Gateway via Project" },
-        { value: "ai-gateway-key", label: "AI Gateway via AI_GATEWAY_API_KEY" },
-        { value: "chatgpt", label: "ChatGPT subscription" },
-        { value: "external", label: "Other providers" },
+        {
+          value: "ai-gateway-project",
+          label: "AI Gateway via Project",
+          hint: "Recommended",
+          description: "Uses your Vercel project. No API key to manage.",
+        },
+        {
+          value: "ai-gateway-key",
+          label: "AI Gateway via AI_GATEWAY_API_KEY",
+          hint: "API key",
+          description: "Use an existing AI Gateway key.",
+        },
+        {
+          value: "chatgpt",
+          label: "ChatGPT subscription",
+          hint: "Codex account",
+          description: "Authenticate through the Codex CLI.",
+        },
+        { value: "external", label: "Other providers", hint: "Direct API key" },
       ],
       initialValue: "ai-gateway-project",
       validateInlineKey: async () => ({ kind: "valid" }),
     });
 
-    expect(screen.snapshot()).toContain("ChatGPT subscription");
+    expect(screen.snapshot()).toMatch(/AI Gateway via Project\s+· Recommended/);
+    expect(screen.snapshot()).toContain("Uses your Vercel project. No API key to manage.");
     input.down();
+    expect(screen.snapshot()).not.toContain("Uses your Vercel project. No API key to manage.");
+    expect(screen.snapshot()).toContain("Use an existing AI Gateway key.");
     input.down();
     input.enter();
     await expect(answer).resolves.toEqual({ kind: "chatgpt" });

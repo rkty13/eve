@@ -811,28 +811,47 @@ describe("renderSelectQuestion", () => {
     );
   });
 
-  it("renders each line of a stacked hint beneath its option", () => {
+  it("keeps a provider's concise status on its row and shows its explanation only on focus", () => {
     const options = [
       {
         value: "ai-gateway-project",
         label: "AI Gateway via Project",
-        hint: "Authenticates with AI Gateway automatically\nin a new or existing project. No keys to manage.",
+        hint: "Recommended",
+        description: "Uses your Vercel project. No API key to manage.",
+      },
+      {
+        value: "ai-gateway-key",
+        label: "AI Gateway via AI_GATEWAY_API_KEY",
+        hint: "API key",
+        description: "Use an existing AI Gateway key.",
       },
     ];
-    const rows = renderSelectQuestion(
+    const selected = renderSelectQuestion(
       {
-        kind: "stacked",
+        kind: "single",
         message: "Which model provider do you want to use?",
         options,
         select: initialSelectState({ options }),
       },
       theme,
       80,
-    );
+    ).join("\n");
+    const moved = renderSelectQuestion(
+      {
+        kind: "single",
+        message: "Which model provider do you want to use?",
+        options,
+        select: { ...initialSelectState({ options }), cursor: 1 },
+      },
+      theme,
+      80,
+    ).join("\n");
 
-    expect(rows).toContain("     Authenticates with AI Gateway automatically");
-    expect(rows).toContain("     in a new or existing project. No keys to manage.");
-    expect(rows.every((row) => !row.includes("\n"))).toBe(true);
+    expect(selected).toMatch(/AI Gateway via Project\s+· Recommended/);
+    expect(selected).toContain("Uses your Vercel project. No API key to manage.");
+    expect(selected).not.toContain("Use an existing AI Gateway key.");
+    expect(moved).toContain("Use an existing AI Gateway key.");
+    expect(moved).not.toContain("Uses your Vercel project. No API key to manage.");
   });
 
   it("renders checkboxes and the Submit row for a multi-select", () => {
@@ -1103,20 +1122,17 @@ describe("renderModelEditorQuestion", () => {
     } as never;
   }
 
-  it("paints the value menu with a hint line per row and a bare Done", () => {
-    const text = renderModelEditorQuestion(
+  it("keeps model values on compact rows and reserves a second line for focused context", () => {
+    const rows = renderModelEditorQuestion(
       { request: editorRequest(), state: editorState() },
       theme,
       80,
-    ).join("\n");
+    );
+    const text = rows.join("\n");
 
-    expect(text).toContain("▶ Model");
-    expect(text).toContain("anthropic/claude-sonnet-5");
-    expect(text).toContain("Reasoning effort");
-    // The mini track rides the hint: value first, notches joined by ━.
-    expect(text).toContain("●─◉─○ medium");
-    expect(text).toContain("Service tier");
-    expect(text).toContain("normal");
+    expect(rows.find((row) => row.includes("▶ Model"))).toContain("anthropic/claude-sonnet-5");
+    expect(rows.find((row) => row.includes("Reasoning effort"))).toContain("●─◉─○ medium");
+    expect(rows.find((row) => row.includes("Service tier"))).toContain("normal");
     expect(text).toContain("Done");
     expect(text).toContain("↑/↓ move");
   });

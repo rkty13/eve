@@ -118,7 +118,7 @@ type SetupOptionSelectPanelState =
   | (SetupSelectPanelBase & { kind: "task-list" })
   | (SetupSelectPanelBase & {
       kind: "inline-edit";
-      layout: "stacked" | "task-list";
+      layout: "plain" | "stacked" | "task-list";
       edit: SetupInlineEditRow;
     });
 
@@ -1025,7 +1025,7 @@ function renderModelEditorMenu(
   );
   return renderSelectQuestion(
     {
-      kind: "stacked",
+      kind: "single",
       message: "",
       options,
       select: { filter: "", cursor: index, selected: new Set() },

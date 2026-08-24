@@ -107,6 +107,13 @@ describe("runRegistryFlow", () => {
       multiple: true,
       search: true,
       placeholder: "Search channels",
+      options: expect.arrayContaining([
+        expect.objectContaining({
+          label: "Web Chat",
+          hint: "Channel",
+          description: "A chat UI for your agent",
+        }),
+      ]),
     });
     expect(prompts[1]).toMatchObject({
       message: "What should your agent be able to work with?",
@@ -119,7 +126,7 @@ describe("runRegistryFlow", () => {
       metadata: [{ label: "Integration", value: "Linear" }],
       options: [
         { value: "install", label: "Install and set up" },
-        { value: "back", label: "Back" },
+        { value: "back", label: "Start over" },
       ],
     });
   });
