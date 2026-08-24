@@ -23,6 +23,7 @@ interface HostVariant {
   readonly instrumentationSlot?: string;
   readonly instrumentationSource?: string;
   readonly schedules?: CompiledAgentManifest["schedules"];
+  readonly workflowSourceFingerprint?: string;
   readonly workflowWorld?: "local" | "vercel";
 }
 
@@ -68,6 +69,12 @@ async function createHost(variant: HostVariant = {}): Promise<PreparedDevelopmen
       workflowWorldPluginPath: join(appRoot, "workflow-world.mjs"),
     },
     compileResult: { manifest } as PreparedDevelopmentApplicationHost["compileResult"],
+    generation: {
+      fingerprint: "generation",
+      ...(variant.workflowSourceFingerprint === undefined
+        ? {}
+        : { workflowSourceFingerprint: variant.workflowSourceFingerprint }),
+    } as PreparedDevelopmentApplicationHost["generation"],
   } as PreparedDevelopmentApplicationHost;
 }
 
@@ -144,6 +151,19 @@ describe("computeDevelopmentHostFingerprint", () => {
     );
 
     expect(vercel).not.toBe(local);
+  });
+
+  it("treats authored workflow sources as structural", async () => {
+    const base = await computeDevelopmentHostFingerprint(await createHost());
+    const withWorkflows = await computeDevelopmentHostFingerprint(
+      await createHost({ workflowSourceFingerprint: "a" }),
+    );
+    const edited = await computeDevelopmentHostFingerprint(
+      await createHost({ workflowSourceFingerprint: "b" }),
+    );
+
+    expect(withWorkflows).not.toBe(base);
+    expect(edited).not.toBe(withWorkflows);
   });
 
   it("leaves schedule definitions runtime-only", async () => {

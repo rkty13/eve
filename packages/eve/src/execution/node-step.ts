@@ -42,6 +42,8 @@ import { findRegisteredRuntimeTool } from "#runtime/tools/registry.js";
 import type { ResolvedToolDefinition } from "#runtime/types.js";
 import { preserveFrameworkStateOnCompaction } from "#execution/compaction.js";
 import { createToolExecuteWithAuth } from "#execution/tool-auth.js";
+import { createWorkflowToolBackgroundExecute } from "#execution/tool-run/background.js";
+import { readWorkflowToolId } from "#shared/workflow-tool.js";
 
 const log = createLogger("execution.node-step");
 
@@ -282,8 +284,9 @@ function resolveHarnessToolDefinition(input: {
   const def = registeredTool.definition;
   const isFrameworkTool = def.sourceId.startsWith("eve:");
   const rawExecute = def.execute;
+  const workflowId = isFrameworkTool ? undefined : readWorkflowToolId(rawExecute);
 
-  return {
+  const definition: HarnessToolDefinition = {
     approvalKey: def.approvalKey,
     description: def.description,
     execution: def.execution,
@@ -299,6 +302,24 @@ function resolveHarnessToolDefinition(input: {
     approval: def.approval,
     outputSchema: def.outputSchema,
     toModelOutput: def.toModelOutput,
+  };
+  if (workflowId === undefined) {
+    return definition;
+  }
+
+  // A workflow body never runs inside the model step. A background tool's
+  // call starts the run as its task's executor and resolves with the
+  // receipt; any other tool's call parks the turn until the run reports.
+  if (def.execution === "background") {
+    return {
+      ...definition,
+      execute: createWorkflowToolBackgroundExecute({ toolName: def.name, workflowId }),
+    };
+  }
+  return {
+    ...definition,
+    execute: undefined,
+    runtimeAction: { kind: "workflow-tool", workflowId },
   };
 }
 

@@ -27,6 +27,7 @@ import {
 } from "#harness/proxy-input-requests.js";
 import { abandonRunningAgentTurns } from "#harness/handles/transitions.js";
 import { clearPendingRuntimeActionBatch } from "#harness/runtime-actions.js";
+import { clearToolRuns } from "#harness/tool-runs.js";
 import { createInstrumentationHandleEvent } from "#harness/instrumentation/native-events.js";
 import { getInstrumentationRuntime } from "#harness/instrumentation/runtime.js";
 import { getTurnUsageState, toUsage } from "#harness/turn-tag-state.js";
@@ -143,7 +144,7 @@ export async function settleCancelledTurnStep(input: {
       clearPendingSessionLimitPrompt(
         clearAllProxyInputRequests(
           clearPendingWorkflowInterrupt(
-            clearPendingRuntimeActionBatch(abandonRunningAgentTurns(session)),
+            clearPendingRuntimeActionBatch(clearToolRuns(abandonRunningAgentTurns(session))),
           ),
         ),
       ),

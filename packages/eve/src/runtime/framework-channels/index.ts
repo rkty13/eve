@@ -15,6 +15,10 @@ import {
   getTaskInputResponseChannelDefinitions,
   getTaskInputResponseChannelNames,
 } from "#runtime/task-input-response-route.js";
+import {
+  getWorkflowWebhookChannelDefinitions,
+  getWorkflowWebhookChannelNames,
+} from "#runtime/workflow-webhook-route.js";
 
 const EVE_CHANNEL_NAME = "eve";
 
@@ -51,6 +55,7 @@ export function getFrameworkChannelDefinitions(): readonly ResolvedChannelDefini
     ...getConnectionCallbackChannelDefinitions(),
     ...getSessionCallbackChannelDefinitions(),
     ...getTaskInputResponseChannelDefinitions(),
+    ...getWorkflowWebhookChannelDefinitions(),
   );
 
   return result;
@@ -62,5 +67,6 @@ export function getAllFrameworkChannelNames(): ReadonlySet<string> {
     ...getConnectionCallbackChannelNames(),
     ...getSessionCallbackChannelNames(),
     ...getTaskInputResponseChannelNames(),
+    ...getWorkflowWebhookChannelNames(),
   ]);
 }
