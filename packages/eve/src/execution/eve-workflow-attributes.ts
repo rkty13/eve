@@ -28,6 +28,7 @@
  * - `$eve.is_trace_content_visible` — whether observability may read content-bearing workflow data
  */
 
+import { CHANNEL_CONTEXT_KEY_NAME } from "#context/key-names.js";
 import { ChannelRequestIdKey } from "#context/keys.js";
 import { shouldCaptureInstrumentationContent } from "#harness/instrumentation/content-policy.js";
 import type { EveAttributeValue } from "#runtime/attributes/normalize.js";
@@ -78,7 +79,9 @@ export interface SessionParentLineage {
  * tag emission silently drops undefined values.
  */
 export function readChannelKind(serializedContext: Record<string, unknown>): string | undefined {
-  const channel = serializedContext["eve.channel"] as SerializedChannelAdapter | undefined;
+  const channel = serializedContext[CHANNEL_CONTEXT_KEY_NAME] as
+    | SerializedChannelAdapter
+    | undefined;
   const kind = channel?.kind;
   return isNonEmptyString(kind) ? kind : undefined;
 }
