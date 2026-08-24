@@ -8,10 +8,11 @@ import { runLoginFlow, type LoginFlowResult } from "#setup/flows/login.js";
 import { runModelFlow } from "#setup/flows/model.js";
 import type { ProviderSelection } from "#setup/provider-settings.js";
 import { runProviderFlow, type ProviderPicker } from "#setup/flows/provider.js";
-import { RegistryFlowFailedError, runRegistryFlow } from "#setup/flows/registry.js";
+import { runRegistryFlow } from "#setup/flows/registry.js";
 import type { Prompter } from "#setup/prompter.js";
 import { WizardCancelledError } from "#setup/step.js";
 
+import { formatRegistrySessionResult } from "./registry-result-message.js";
 import { createTuiPrompter, type TuiPrompterRenderer } from "./tui-prompter.js";
 import type { PromptCommandExtensionName } from "./prompt-commands.js";
 import type { SetupFlowIndicator, SetupFlowRenderer } from "./setup-flow.js";
@@ -64,27 +65,6 @@ export interface TuiSetupFlows {
   runModelFlow: typeof runModelFlow;
   runRegistryFlow: typeof runRegistryFlow;
   runDeployFlow: typeof runDeployFlow;
-}
-
-function joinedTitles(titles: readonly string[]): string {
-  if (titles.length === 0) return "";
-  if (titles.length === 1) return titles[0]!;
-  if (titles.length === 2) return `${titles[0]} and ${titles[1]}`;
-  return `${titles.slice(0, -1).join(", ")}, and ${titles.at(-1)}`;
-}
-
-function registryResultMessage(
-  result: Extract<Awaited<ReturnType<typeof runRegistryFlow>>, { kind: "done" }>,
-): string {
-  const lines = [`Added ${joinedTitles(result.items.map((item) => item.title))}`];
-  for (const item of result.items) {
-    if (item.facts.length === 0 && item.output.length === 0) continue;
-    lines.push("", item.title);
-    const width = Math.max(0, ...item.facts.map((fact) => fact.label.length));
-    for (const fact of item.facts) lines.push(`  ${fact.label.padEnd(width)}  ${fact.value}`);
-    for (const output of item.output) lines.push(`  ${output}`);
-  }
-  return lines.join("\n");
 }
 
 export interface TuiSetupCommandResult {
@@ -258,18 +238,29 @@ async function executeSetupCommand(
         return outcome;
       }
       case "add": {
-        const result = await flows.runRegistryFlow({ appRoot, prompter, signal });
-        if (result.kind === "cancelled") {
+        const flow = await flows.runRegistryFlow({
+          appRoot,
+          prompter,
+          signal,
+          onItemStart: (item, index, total) =>
+            renderer.replaceContent?.({
+              headline: `Adding ${item.title ?? item.name} · ${index + 1} of ${total}`,
+              facts: [],
+            }),
+        });
+        if (flow.kind === "cancelled") {
           return { message: "/add dismissed.", preserveFlowDiagnostics: true };
         }
+        const result = flow.result;
         const outcome: TuiSetupCommandResult = {
           message:
-            result.addedItems.length > 0
-              ? registryResultMessage(result)
-              : "No registry items added.",
+            result.items.length > 0 || result.failures.length > 0
+              ? formatRegistrySessionResult(result)
+              : "No integrations selected.",
           preserveFlowDiagnostics: true,
         };
-        if (result.addedItems.length > 0) outcome.tone = "success";
+        if (result.failures.length > 0) outcome.tone = "error";
+        else if (result.items.length > 0) outcome.tone = "success";
         if (result.deployed === "production") outcome.effect = { kind: "deployed" };
         return outcome;
       }
@@ -300,14 +291,6 @@ async function executeSetupCommand(
       }
     }
   } catch (error) {
-    if (error instanceof RegistryFlowFailedError) {
-      const completed = error.completed;
-      return {
-        message: `${registryResultMessage(completed)}\n\n${error.message}`,
-        tone: "error",
-        preserveFlowDiagnostics: true,
-      };
-    }
     if (error instanceof WizardCancelledError) {
       return {
         message: `/${command} dismissed.`,

@@ -1697,6 +1697,32 @@ describe("TerminalRenderer (inline scrollback)", () => {
     expect(screen.snapshot()).toContain("⎿  ✓ Registry items added: connection/linear.");
   });
 
+  it("renders each initial registry item as its own durable elbow result", () => {
+    const { screen, renderer } = makeRenderer();
+    renderer.renderRegistryResult([
+      {
+        title: "Telegram",
+        status: "success",
+        lines: ["Installed."],
+      },
+      {
+        title: "Slack",
+        status: "error",
+        lines: ["pnpm add failed."],
+        detail: "Error: pnpm add failed.\n    at installSlack (setup.ts:42:7)",
+      },
+    ]);
+    renderer.shutdown();
+
+    const snapshot = screen.snapshot();
+    expect(snapshot).toContain("Telegram");
+    expect(snapshot).toContain("⎿  ✓ Installed.");
+    expect(snapshot).toContain("⨯ Slack");
+    expect(snapshot).toContain("⎿  pnpm add failed.");
+    expect(snapshot).toContain("at installSlack (setup.ts:42:7)");
+    expect(screen.rawOutput()).toContain("\u001b[2m    at installSlack");
+  });
+
   it("marks a failed automatic command and keeps its multiline outcome in one result block", () => {
     const { screen, renderer } = makeRenderer();
     renderer.renderCommandInvocation("/vc:login", "failed");
@@ -3726,8 +3752,8 @@ describe("TerminalRenderer setup panel", () => {
     renderer.shutdown();
   });
 
-  it("toggles a multi-select with space and confirms from the Submit row", async () => {
-    const { input, renderer } = makeRenderer();
+  it("renders a compact checklist and confirms selected entries from Submit", async () => {
+    const { screen, input, renderer } = makeRenderer();
 
     const answer = renderer.setupFlow.readSelect({
       kind: "multi",
@@ -3739,7 +3765,15 @@ describe("TerminalRenderer setup panel", () => {
       required: true,
     });
 
+    const snapshot = screen.snapshot();
+    expect(snapshot).toContain("Select channels");
+    expect(snapshot).toContain("▶ Web Chat");
+    expect(snapshot).toContain("◦ Slack");
+    expect(snapshot).toContain("Submit");
+    expect(snapshot).toContain("space to toggle · enter on Submit to confirm");
+
     input.type(" ");
+    expect(screen.snapshot()).toContain("✓ Web Chat");
     input.down();
     input.down();
     input.enter();
