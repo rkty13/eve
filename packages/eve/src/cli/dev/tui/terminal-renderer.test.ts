@@ -3864,49 +3864,17 @@ describe("TerminalRenderer setup panel", () => {
     const answer = renderer.setupFlow.readProviderPicker({
       message: "Provider",
       options: [
-        {
-          value: "ai-gateway-project",
-          label: "AI Gateway via Project",
-          hint: "Recommended",
-          focusDescription: "Uses your Vercel project. No API key to manage.",
-        },
-        {
-          value: "ai-gateway-key",
-          label: "AI Gateway via AI_GATEWAY_API_KEY",
-          hint: "API key",
-          focusDescription: "Use an existing AI Gateway key.",
-        },
-        {
-          value: "chatgpt",
-          label: "ChatGPT subscription",
-          hint: "Codex account",
-          focusDescription: "Authenticate through the Codex CLI.",
-        },
-        { value: "external", label: "Other providers", hint: "Direct API key" },
+        { value: "ai-gateway-project", label: "AI Gateway via Project" },
+        { value: "ai-gateway-key", label: "AI Gateway via AI_GATEWAY_API_KEY" },
+        { value: "chatgpt", label: "ChatGPT subscription" },
+        { value: "external", label: "Other providers" },
       ],
       initialValue: "ai-gateway-project",
       validateInlineKey: async () => ({ kind: "valid" }),
     });
 
-    const projectFrame = screen.snapshot();
-    expect(projectFrame).toMatch(/AI Gateway via Project\s+· Recommended/);
-    expect(projectFrame).toContain("Uses your Vercel project. No API key to manage.");
-    const projectRow = projectFrame
-      .split("\n")
-      .findIndex((line) => line.includes("AI Gateway via Project"));
-    const keyRow = projectFrame
-      .split("\n")
-      .findIndex((line) => line.includes("AI Gateway via AI_GATEWAY_API_KEY"));
+    expect(screen.snapshot()).toContain("ChatGPT subscription");
     input.down();
-    const keyFrame = screen.snapshot();
-    expect(keyFrame).not.toContain("Uses your Vercel project. No API key to manage.");
-    expect(keyFrame).toContain("Use an existing AI Gateway key.");
-    expect(keyFrame.split("\n").findIndex((line) => line.includes("AI Gateway via Project"))).toBe(
-      projectRow,
-    );
-    expect(
-      keyFrame.split("\n").findIndex((line) => line.includes("AI Gateway via AI_GATEWAY_API_KEY")),
-    ).toBe(keyRow);
     input.down();
     input.enter();
     await expect(answer).resolves.toEqual({ kind: "chatgpt" });

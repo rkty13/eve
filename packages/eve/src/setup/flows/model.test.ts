@@ -123,7 +123,7 @@ function scriptedPrompter(input: { menu: (PrompterValue | "esc")[] }) {
 }
 
 describe("runModelFlow", () => {
-  it("paints a compact menu with the running model and configured provider", async () => {
+  it("paints a stacked menu with the running model and configured provider", async () => {
     const { prompter, menuPaints } = scriptedPrompter({ menu: ["esc"] });
 
     await expect(runModelFlow({ appRoot: APP_ROOT, prompter, deps: flowDeps() })).resolves.toEqual({
@@ -148,7 +148,7 @@ describe("runModelFlow", () => {
           { value: "done", label: "Done" },
         ],
         notices: [],
-        hintLayout: "inline",
+        hintLayout: "stacked",
         initialValue: "model",
       },
     ]);
@@ -389,7 +389,7 @@ describe("runModelFlow", () => {
             text: "`agent.ts` specifies the model provider directly. Model, provider, and service-tier changes stay source-owned; reasoning remains configurable here.",
           },
         ],
-        hintLayout: "inline",
+        hintLayout: "stacked",
         initialValue: "model",
       },
     ]);

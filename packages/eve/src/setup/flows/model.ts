@@ -389,7 +389,7 @@ export async function runModelFlow(input: {
             editable,
             settingsEditable,
           ),
-          hintLayout: "inline",
+          hintLayout: "stacked",
           initialValue: nextSelection,
           notices: externalNotice === undefined ? [] : [externalNotice],
         });

@@ -107,19 +107,14 @@ describe("runRegistryFlow", () => {
       multiple: true,
       search: true,
       placeholder: "Search channels",
-      options: expect.arrayContaining([
-        expect.objectContaining({
-          label: "Web Chat",
-          hint: "Channel",
-          focusDescription: "A chat UI for your agent",
-        }),
-      ]),
+      hintLayout: "stacked",
     });
     expect(prompts[1]).toMatchObject({
       message: "What should your agent be able to work with?",
       multiple: true,
       search: true,
       placeholder: "Search integrations",
+      hintLayout: "stacked",
     });
     expect(prompts[2]).toMatchObject({
       message: "Review your agent",

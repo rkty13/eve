@@ -42,10 +42,6 @@ function setupSelectRequest<T extends PrompterValue>(
   };
 
   if (opts.multiple === true) {
-    if (opts.hintLayout !== undefined) {
-      throw new Error("Multi-select setup questions do not support a hint layout.");
-    }
-
     let request: SetupSelectRequest;
     if (opts.search === true) {
       request = {
@@ -53,6 +49,10 @@ function setupSelectRequest<T extends PrompterValue>(
         kind: "searchable-multi",
         required: opts.required ?? false,
       };
+      if (opts.hintLayout === "stacked") request.layout = "stacked";
+      if (opts.hintLayout === "inline") {
+        throw new Error("Multi-select setup questions do not support inline hint layout.");
+      }
       if (opts.placeholder !== undefined) request.placeholder = opts.placeholder;
     } else {
       request = {

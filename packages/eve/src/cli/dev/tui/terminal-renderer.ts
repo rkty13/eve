@@ -2183,9 +2183,9 @@ export class TerminalRenderer implements AgentTUIRenderer {
 
     flow.question = (width) => {
       const badge = cursorBadge();
-      const panel: Extract<SetupSelectPanelState, { kind: "inline-edit" }> = {
+      const panel: SetupSelectPanelState = {
         kind: "inline-edit",
-        layout: "plain",
+        layout: "stacked",
         message: opts.message,
         options: opts.options,
         select: interaction.select,

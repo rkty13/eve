@@ -37,22 +37,6 @@ function label(item: Item): string {
   return item.title ?? item.name.split("/").at(-1) ?? item.name;
 }
 
-function itemKind(item: Item): string {
-  const prefix = item.name.split("/")[0];
-  switch (prefix) {
-    case "channel":
-      return "Channel";
-    case "connection":
-      return "MCP connection";
-    case "extension":
-      return "Extension";
-    case "instrumentation":
-      return "Observability";
-    default:
-      return "Integration";
-  }
-}
-
 function sectionRows(
   section: keyof typeof SECTIONS,
   catalog: readonly Item[],
@@ -61,8 +45,7 @@ function sectionRows(
   return catalog.filter(SECTIONS[section].includes).map((item) => ({
     value: item.address,
     label: label(item),
-    hint: itemKind(item),
-    focusDescription: item.description,
+    hint: item.description,
     ...(featured.has(item.name) ? { featured: true } : {}),
   }));
 }
@@ -90,6 +73,7 @@ async function editSection(input: {
     multiple: true,
     search: true,
     placeholder: section === "channels" ? "Search channels" : "Search integrations",
+    hintLayout: "stacked",
     initialValues: selectedInSection(section, catalog, selected),
     options: sectionRows(section, catalog),
   });
