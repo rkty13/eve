@@ -2,6 +2,7 @@ import { z } from "#compiled/zod/index.js";
 
 import type { HarnessToolDefinition } from "#harness/execute-tool.js";
 import type { ResolvedToolDefinition } from "#runtime/types.js";
+import { taskViewJsonSchema } from "#tasks/json.js";
 
 /**
  * Framework task tools for `experimental.tasks`.
@@ -16,14 +17,11 @@ import type { ResolvedToolDefinition } from "#runtime/types.js";
 export const TASK_CANCEL_TOOL_NAME = "task_cancel";
 export const TASK_UPDATE_TOOL_NAME = "task_update";
 
-/** Every model-visible task tool name, for gating and dispatch matching. */
+/**
+ * Every model-visible task tool name, for gating and dispatch matching.
+ * All task tools are execute-less task-control runtime actions.
+ */
 export const TASK_TOOL_NAMES: ReadonlySet<string> = new Set([
-  TASK_CANCEL_TOOL_NAME,
-  TASK_UPDATE_TOOL_NAME,
-]);
-
-/** Task-control tools executed by the runtime-action dispatch step. */
-export const TASK_CONTROL_TOOL_NAMES: ReadonlySet<string> = new Set([
   TASK_CANCEL_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
 ]);
@@ -39,33 +37,8 @@ export const TASK_UPDATE_INPUT_SCHEMA = z.strictObject({
   message: z.string().min(1).describe("Brief description of what this task is currently doing."),
 });
 
-const TASK_VIEW_SCHEMA = z.object({
-  inputRequests: z.array(z.unknown()).optional(),
-  lastOutput: z
-    .object({
-      data: z.unknown(),
-      type: z.enum(["result", "error"]),
-    })
-    .optional(),
-  metadata: z.union([
-    z.object({
-      agentId: z.string(),
-      kind: z.literal("subagent"),
-      mode: z.enum(["local", "remote"]),
-      name: z.string(),
-    }),
-    z.object({
-      data: z.record(z.string(), z.unknown()).optional(),
-      kind: z.string(),
-      name: z.string(),
-    }),
-  ]),
-  status: z.enum(["working", "input_required", "completed", "failed", "cancelled"]),
-  taskId: z.string(),
-});
-
 export const TASK_VIEWS_OUTPUT_SCHEMA = z.object({
-  tasks: z.array(TASK_VIEW_SCHEMA),
+  tasks: z.array(taskViewJsonSchema),
 });
 
 export const SUBAGENT_TASK_RECEIPT_OUTPUT_SCHEMA = z.strictObject({
