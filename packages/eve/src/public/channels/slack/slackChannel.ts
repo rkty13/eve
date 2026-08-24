@@ -254,6 +254,11 @@ export interface SlackInstrumentationMetadata extends Record<string, unknown> {
  * signing-secret default.
  */
 export interface SlackChannelCredentials {
+  readonly vercelConnect?: {
+    readonly connector: string;
+    readonly connectorType: string;
+    readonly principalTypes: readonly ("app" | "user")[];
+  };
   /**
    * Bot token for all outbound Slack Web API calls. Falls back to
    * `process.env.SLACK_BOT_TOKEN` when omitted.
@@ -750,7 +755,7 @@ export function slackChannel(config: SlackChannelConfig = {}): SlackChannel {
   // Light weight dedup mechanism - not reliable across multiple invocations.
   const handledEvents = new Set<string>();
 
-  return defineChannel<
+  const channel = defineChannel<
     SlackChannelState,
     SlackChannelContext,
     SlackReceiveTarget,
@@ -840,6 +845,10 @@ export function slackChannel(config: SlackChannelConfig = {}): SlackChannel {
     },
 
     events: mergedEvents,
+  });
+
+  return Object.assign(channel, {
+    vercelConnect: config.credentials?.vercelConnect,
   });
 }
 

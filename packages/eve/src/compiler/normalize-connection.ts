@@ -92,7 +92,13 @@ export async function compileConnectionDefinition(
  * the structural marker contract — any object with a non-empty
  * `vercelConnect.connector` string is recognized.
  */
-function extractVercelConnectMarker(auth: unknown): { readonly connector: string } | undefined {
+function extractVercelConnectMarker(auth: unknown):
+  | {
+      readonly connector: string;
+      readonly connectorType: string;
+      readonly principalTypes: readonly ("app" | "user")[];
+    }
+  | undefined {
   if (auth === null || typeof auth !== "object") {
     return undefined;
   }
@@ -104,5 +110,19 @@ function extractVercelConnectMarker(auth: unknown): { readonly connector: string
   if (typeof connector !== "string" || connector.length === 0) {
     return undefined;
   }
-  return { connector };
+  const connectorType = (marker as { connectorType?: unknown }).connectorType;
+  const principalTypes = (marker as { principalTypes?: unknown }).principalTypes;
+  if (
+    connectorType !== undefined &&
+    (typeof connectorType !== "string" ||
+      !Array.isArray(principalTypes) ||
+      !principalTypes.every((type) => type === "app" || type === "user"))
+  ) {
+    return undefined;
+  }
+  return {
+    connector,
+    connectorType: typeof connectorType === "string" ? connectorType : "oauth",
+    principalTypes: Array.isArray(principalTypes) ? principalTypes : ["user"],
+  };
 }

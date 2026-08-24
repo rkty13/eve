@@ -59,7 +59,34 @@ export async function compileChannelDefinition(
     exportName: source.exportName,
     adapterKind: extractAdapterKind(definition.adapter),
     cors: definition.cors,
+    vercelConnect: extractVercelConnectMarker(rawValue),
   }));
+}
+
+function extractVercelConnectMarker(value: unknown):
+  | {
+      readonly connector: string;
+      readonly connectorType: string;
+      readonly principalTypes: readonly ("app" | "user")[];
+    }
+  | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const marker = (value as { vercelConnect?: unknown }).vercelConnect;
+  if (marker === null || typeof marker !== "object") return undefined;
+  const { connector, connectorType, principalTypes } = marker as {
+    connector?: unknown;
+    connectorType?: unknown;
+    principalTypes?: unknown;
+  };
+  if (
+    typeof connector !== "string" ||
+    typeof connectorType !== "string" ||
+    !Array.isArray(principalTypes) ||
+    !principalTypes.every((type) => type === "app" || type === "user")
+  ) {
+    return undefined;
+  }
+  return { connector, connectorType, principalTypes };
 }
 
 function extractAdapterKind(adapter: unknown): string | undefined {
