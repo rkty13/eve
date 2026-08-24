@@ -17,7 +17,7 @@ import type {
   TaskInboundTurnStarted,
   TaskInboundUpdate,
 } from "#tasks/types.js";
-import { readTaskIdFromInboxToken } from "#tasks/task-id.js";
+import { readTaskIdFromInboxToken } from "#tasks/task-inbox-token.js";
 
 export const HTTP_SESSION_CALLBACK_CHANNEL_NAME_PREFIX = "eve/v1/callback";
 
