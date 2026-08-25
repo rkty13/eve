@@ -11,6 +11,7 @@ import {
   workflowEntryReference,
 } from "#execution/workflow-runtime.js";
 import { sessionCommandHookToken } from "#execution/session-command-token.js";
+import { sessionStartBarrierToken } from "#execution/session-start-barrier.js";
 import type { RuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 
@@ -331,6 +332,30 @@ describe("createWorkflowRuntime#createSession", () => {
         }),
     });
   }
+
+  it("creates and releases a durable first-turn barrier", async () => {
+    const compiledArtifactsSource = {} as RuntimeCompiledArtifactsSource;
+    mockBundleAndRun(compiledArtifactsSource);
+    startMock.mockResolvedValue({ runId: "driver-run" });
+    const runtime = buildRuntime(compiledArtifactsSource);
+
+    await runtime.createSession({
+      adapter,
+      auth: null,
+      input: { message: "hello" },
+      mode: "conversation",
+      startBarrier: true,
+    });
+
+    const [, [workflowInput]] = startMock.mock.calls[0]!;
+    expect(workflowInput).toMatchObject({ startBarrier: true });
+    expect(getHookByTokenMock).toHaveBeenCalledWith(sessionStartBarrierToken("driver-run"));
+
+    await runtime.startSession!("driver-run");
+    expect(resumeHookMock).toHaveBeenCalledWith(sessionStartBarrierToken("driver-run"), {
+      ready: true,
+    });
+  });
 
   it("starts workflowEntry on the latest deployment in Vercel production", async () => {
     vi.stubEnv("VERCEL_ENV", "production");

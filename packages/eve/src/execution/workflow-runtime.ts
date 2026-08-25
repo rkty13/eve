@@ -30,6 +30,7 @@ import {
   getHookByToken,
   getRun,
   start,
+  resumeHook,
   type Run,
   type StartOptionsWithoutDeploymentId,
   type WorkflowFunction,
@@ -48,6 +49,10 @@ import type { WorkflowEntryInput } from "#execution/workflow-entry.js";
 import { walkCauseChain } from "#shared/errors.js";
 import { buildInvocationAttributes } from "#internal/invocation/metadata.js";
 import { sessionCommandHookToken } from "#execution/session-command-token.js";
+import {
+  sessionStartBarrierToken,
+  type SessionStartBarrierPayload,
+} from "#execution/session-start-barrier.js";
 import { resumeSessionInbox } from "#execution/wire/session-inbox-resume.js";
 import type { DynamicSubagentAgentConfig } from "#runtime/subagents/dynamic-agent-config.js";
 
@@ -148,6 +153,9 @@ export function createWorkflowRuntime(config: {
         limits: input.limits,
         serializedContext,
       };
+      if (input.startBarrier === true) {
+        workflowInput.startBarrier = true;
+      }
       if (sessionTimeoutMs !== undefined) {
         workflowInput.sessionTimeoutMs = sessionTimeoutMs;
       }
@@ -196,6 +204,9 @@ export function createWorkflowRuntime(config: {
         }
       }
       await waitForOwnedCommandHook(sessionCommandHookToken(run.runId), run.runId);
+      if (input.startBarrier === true) {
+        await waitForOwnedCommandHook(sessionStartBarrierToken(run.runId), run.runId);
+      }
 
       let events: ReadableStream<MessageStreamEvent> | undefined;
       const getEvents = () => {
@@ -209,6 +220,12 @@ export function createWorkflowRuntime(config: {
         },
         sessionId: run.runId,
       };
+    },
+
+    async startSession(sessionId: string): Promise<void> {
+      await resumeHook(sessionStartBarrierToken(sessionId), {
+        ready: true,
+      } satisfies SessionStartBarrierPayload);
     },
 
     async dispatchContinuation<TCommand extends SessionCommand>(

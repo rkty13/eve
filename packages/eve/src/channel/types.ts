@@ -476,6 +476,8 @@ export interface RunInput {
     readonly outputSchema?: JsonObject;
   };
   readonly mode: RunMode;
+  /** Holds the first turn until the creating channel completes required setup. */
+  readonly startBarrier?: boolean;
   readonly parent?: SessionParent;
   /**
    * Dispatching parent's open trace window. Handed down rather than looked up
@@ -555,6 +557,9 @@ export interface Runtime {
    * completion.
    */
   createSession(input: RunInput): Promise<RunHandle>;
+
+  /** Releases a session whose first turn is waiting on channel-owned setup. */
+  startSession?(sessionId: string): Promise<void>;
 
   dispatchContinuation<TCommand extends SessionCommand>(
     input: DispatchContinuationInput<TCommand>,

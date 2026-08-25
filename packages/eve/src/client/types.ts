@@ -105,6 +105,8 @@ export interface ClientOptions {
  */
 export interface SendTurnInput<TOutput = unknown> extends SendTurnOptions<TOutput> {
   readonly message: string | UserContent;
+  /** Stable create-once key for safely retrying this session creation. */
+  readonly operationId?: string;
 }
 
 /** Options shared by message sends and HITL responses on a client session. */

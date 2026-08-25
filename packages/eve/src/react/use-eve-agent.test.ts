@@ -369,6 +369,7 @@ describe("useEveAgent", () => {
         randomWord: "waltz",
       },
       message: "What word is currently selected?",
+      operationId: expect.any(String),
     });
 
     await act(async () => {
