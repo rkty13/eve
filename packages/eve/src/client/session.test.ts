@@ -77,6 +77,25 @@ function createBoundedStreamResponse(events: readonly unknown[]) {
 }
 
 describe("ClientSession", () => {
+  it("sends a create-once operation id only when creating a session", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(createAcceptedResponse());
+    const context: ConstructorParameters<typeof ClientSession>[0] = {
+      host: "https://eve.test",
+      resolveHeaders: async () => new Headers(),
+    };
+
+    await ClientSession.create(context, {
+      message: "hello",
+      operationId: "create-1",
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({
+      message: "hello",
+      operationId: "create-1",
+    });
+  });
+
   it("cancels an accepted turn before its stream settles with freshly resolved auth", async () => {
     let headerResolution = 0;
     const requests: Array<{ headers: Headers; method: string; url: string }> = [];

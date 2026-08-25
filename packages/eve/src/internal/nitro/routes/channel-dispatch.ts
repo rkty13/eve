@@ -15,6 +15,7 @@ import {
   attachRouteChannelName,
   attachRemoteAgentStreamHeadersResolver,
   attachRouteSessionCreator,
+  attachRouteSessionStarter,
 } from "#internal/nitro/routes/channel-route-context.js";
 import type { NitroArtifactsConfig } from "#internal/nitro/routes/runtime-artifacts.js";
 import { traceChannelRequest } from "#internal/nitro/routes/channel-request-instrumentation.js";
@@ -249,36 +250,44 @@ function buildRouteArgs(
   });
   const to = createCrossChannelToFn(bundle.runtime, toCrossChannelTargets(bundle.channels));
 
-  const args = attachRouteSessionCreator(
-    attachRouteChannelName(
-      attachAgentInfoRouteResponse(
-        {
-          attachSession,
-          ...channelOperations,
-          params,
-          requestIp,
-          to,
-          waitUntil,
-        },
-        async () => {
-          const { handleAgentInfoRequest } = await import("#internal/nitro/routes/info.js");
-          return await handleAgentInfoRequest(config);
-        },
-      ),
-      channelName,
-    ),
-    async (input) =>
-      await bundle.runtime.createSession({
-        ...input,
-        adapter,
+  const args = attachRouteSessionStarter(
+    attachRouteSessionCreator(
+      attachRouteChannelName(
+        attachAgentInfoRouteResponse(
+          {
+            attachSession,
+            ...channelOperations,
+            params,
+            requestIp,
+            to,
+            waitUntil,
+          },
+          async () => {
+            const { handleAgentInfoRequest } = await import("#internal/nitro/routes/info.js");
+            return await handleAgentInfoRequest(config);
+          },
+        ),
         channelName,
-        continuationToken:
-          input.continuationToken === undefined
-            ? undefined
-            : `${channelName}:${input.continuationToken}`,
-        delivery: createChannelDeliveryMetadata(deliverySource),
-        requestId,
-      }),
+      ),
+      async (input) =>
+        await bundle.runtime.createSession({
+          ...input,
+          adapter,
+          channelName,
+          continuationToken:
+            input.continuationToken === undefined
+              ? undefined
+              : `${channelName}:${input.continuationToken}`,
+          delivery: createChannelDeliveryMetadata(deliverySource),
+          requestId,
+        }),
+    ),
+    async (sessionId) => {
+      if (bundle.runtime.startSession === undefined) {
+        throw new Error("The configured runtime does not support session start barriers.");
+      }
+      await bundle.runtime.startSession(sessionId);
+    },
   );
   if (bundle.resolveRemoteAgentStreamHeaders !== undefined) {
     attachRemoteAgentStreamHeadersResolver(args, bundle.resolveRemoteAgentStreamHeaders);

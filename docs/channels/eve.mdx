@@ -162,6 +162,26 @@ export default eveChannel({
 
 `onMessage` must return an auth result. Return `title` alongside `auth` to set the title when the dispatch starts a run. A successful canonical eve HTTP message always dispatches and therefore always produces or continues a session.
 
+### Complete required setup before a session starts
+
+Use `beforeSessionStart` when your application must persist the minted eve session ID before the first turn can run or clients can open its stream:
+
+```ts title="agent/channels/eve.ts"
+export default eveChannel({
+  auth: appAuth,
+  onMessage(ctx) {
+    return { auth: selectTenant(defaultEveAuth(ctx)) };
+  },
+  async beforeSessionStart({ auth, sessionId }) {
+    await registerApplicationSession({ auth, sessionId });
+  },
+});
+```
+
+The callback receives the session auth returned by `onMessage`. eve waits for it before dispatching the first turn and returning the session ID. If it fails, the create request returns an error and the session stays gated.
+
+Create-once retries can run the callback again after a failure or process crash. Keep its writes idempotent, and pass an `operationId` when using the lower-level client. `useEveAgent` supplies a stable operation ID automatically while a new session is pending.
+
 ## Clients
 
 The browser side of this API lives in the [Frontend](../guides/frontend/overview) docs, where `useEveAgent` drives the eve channel from React UI.

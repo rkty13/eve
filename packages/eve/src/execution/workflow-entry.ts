@@ -47,6 +47,7 @@ import { readSerializedSubagentDepth } from "#harness/subagent-depth.js";
 import type { DynamicSubagentAgentConfig } from "#runtime/subagents/dynamic-agent-config.js";
 import type { TokenUsage } from "#shared/token-usage.js";
 import { isTaskOwnedSerializedContext } from "#execution/tasks/child/instructions.js";
+import { waitForSessionStart } from "#execution/session-start-barrier.js";
 
 const SAFE_OUTER_WORKFLOW_FAILURE_MESSAGE =
   "Agent workflow failed. Inspect the private session trace for details.";
@@ -65,6 +66,7 @@ export interface WorkflowEntryInput {
   readonly limits?: RunInput["limits"];
   readonly sessionTimeoutMs?: number | false;
   readonly serializedContext: Record<string, unknown>;
+  readonly startBarrier?: boolean;
 }
 
 export interface WorkflowEntryResult {
@@ -215,6 +217,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
       mode,
       serializedContext: input.serializedContext,
       sessionState,
+      startBarrier: input.startBarrier,
       sessionTimeoutDeadline:
         input.sessionTimeoutMs === false
           ? undefined
@@ -308,6 +311,7 @@ async function runDriverLoop(input: {
   readonly mode: RunMode;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
+  readonly startBarrier?: boolean;
   readonly sessionTimeoutDeadline?: Date;
 }): Promise<DriverLoopOutcome> {
   // One payload per exact authorization attempt accumulates across
@@ -463,6 +467,9 @@ async function runDriverLoop(input: {
         if (!isHookConflictError(error)) throw error;
         return { kind: "result", result: { output: "" } };
       }
+    }
+    if (input.startBarrier === true) {
+      await waitForSessionStart(input.sessionState.sessionId);
     }
     await sessionTimeout?.start();
 

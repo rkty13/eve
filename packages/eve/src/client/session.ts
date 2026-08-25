@@ -319,6 +319,9 @@ function createMessageBody(
     body.turnPolicy = input.turnPolicy;
   }
   if (input.clientContext !== undefined) body.clientContext = input.clientContext;
+  if (requireMessage && "operationId" in input && input.operationId !== undefined) {
+    body.operationId = input.operationId;
+  }
   const outputSchema = serializeOutputSchema(input.outputSchema);
   if (outputSchema !== undefined) body.outputSchema = outputSchema;
 

@@ -103,6 +103,27 @@ afterEach(() => {
 });
 
 describe("EveAgentStore stream overlap", () => {
+  it("reuses its create-once operation id after session setup fails", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ error: "setup failed", ok: false }, { status: 500 }))
+      .mockResolvedValueOnce(startedResponse())
+      .mockResolvedValueOnce(streamResponse(turnEvents()));
+    const store = new EveAgentStore({ reducer: defaultMessageReducer() });
+
+    await store.send({ message: "Hello" });
+    await store.send({ message: "Hello" });
+
+    const first = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      operationId?: string;
+    };
+    const second = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as {
+      operationId?: string;
+    };
+    expect(first.operationId).toMatch(/[0-9a-f-]{36}/);
+    expect(second.operationId).toBe(first.operationId);
+  });
+
   it("rejects a prepared turn containing both a message and input responses", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     const store = new EveAgentStore({ reducer: defaultMessageReducer() });

@@ -20,6 +20,7 @@ import {
   readAgentInfoRouteResponse,
   readRemoteAgentStreamHeadersResolver,
   readRouteSessionCreator,
+  readRouteSessionStarter,
 } from "#internal/nitro/routes/channel-route-context.js";
 import {
   EVE_MESSAGE_STREAM_CONTENT_TYPE,
@@ -79,6 +80,12 @@ export type EveEventContext = ChannelContinuationOps;
 
 /** Runtime stream-event handlers supported by `eveChannel({ events })`. */
 export type EveChannelEvents = ChannelEvents<EveEventContext>;
+
+export interface EveSessionStartContext {
+  readonly auth: SessionAuthContext | null;
+  readonly request: Request;
+  readonly sessionId: string;
+}
 
 export interface EveChannelCorsOptions {
   /**
@@ -194,6 +201,14 @@ export interface EveChannelInput {
     message: string | UserContent,
   ) => EveMessageResultOrPromise;
   /**
+   * Required setup for a newly created session. eve holds the first turn and
+   * withholds the session id until this callback succeeds.
+   *
+   * The callback can run more than once when a create-once request is retried,
+   * so its side effects must be idempotent.
+   */
+  readonly beforeSessionStart?: (ctx: EveSessionStartContext) => void | Promise<void>;
+  /**
    * Runtime stream-event handlers for the default eve HTTP channel. Handlers receive
    * the event data, {@link EveEventContext}, and `SessionContext` (the same shape as custom channels).
    */
@@ -279,22 +294,6 @@ export function eveChannel(input: EveChannelInput): EveChannel {
                 auth: forwarded.auth,
                 operationId: body.operationId,
               });
-        if (operationToken !== undefined) {
-          const owner = await args.resolveSession(operationToken);
-          if (owner !== undefined) {
-            return Response.json(
-              { ok: true, sessionId: owner.id, status: "accepted" },
-              {
-                headers: {
-                  "cache-control": "no-store",
-                  [EVE_SESSION_ID_HEADER]: owner.id,
-                },
-                status: 202,
-              },
-            );
-          }
-        }
-
         const messageResult = await resolveOnMessage({
           auth: forwarded.auth,
           config: input,
@@ -302,6 +301,20 @@ export function eveChannel(input: EveChannelInput): EveChannel {
           request: req,
         });
         if (messageResult instanceof Response) return messageResult;
+        if (operationToken !== undefined) {
+          const owner = await args.resolveSession(operationToken);
+          if (owner !== undefined) {
+            const startFailure = await completeSessionStart({
+              auth: messageResult.auth,
+              config: input,
+              request: req,
+              routeArgs: args,
+              sessionId: owner.id,
+            });
+            if (startFailure !== null) return startFailure;
+            return acceptedSessionResponse(owner.id);
+          }
+        }
         const createSession = readRouteSessionCreator(args);
         if (createSession === undefined) {
           return Response.json(
@@ -326,22 +339,21 @@ export function eveChannel(input: EveChannelInput): EveChannel {
             },
             mode: body.mode ?? "conversation",
             parentTraceContext,
+            startBarrier: input.beforeSessionStart !== undefined,
             title: messageResult.title,
           });
         } catch (error) {
           // A concurrent create-once request won the token: adopt its session
           // without delivering this duplicate input.
           if (operationToken !== undefined && isRuntimeSessionOwnershipConflictError(error)) {
-            return Response.json(
-              { ok: true, sessionId: error.ownerSessionId, status: "accepted" },
-              {
-                headers: {
-                  "cache-control": "no-store",
-                  [EVE_SESSION_ID_HEADER]: error.ownerSessionId,
-                },
-                status: 202,
-              },
-            );
+            const startFailure = await completeSessionStart({
+              auth: messageResult.auth,
+              config: input,
+              request: req,
+              routeArgs: args,
+              sessionId: error.ownerSessionId,
+            });
+            return startFailure ?? acceptedSessionResponse(error.ownerSessionId);
           }
           const errorId = logError(log, "session-create request failed", error);
           return Response.json(
@@ -349,17 +361,14 @@ export function eveChannel(input: EveChannelInput): EveChannel {
             { status: 500 },
           );
         }
-
-        return Response.json(
-          { ok: true, sessionId: handle.sessionId, status: "accepted" },
-          {
-            headers: {
-              "cache-control": "no-store",
-              [EVE_SESSION_ID_HEADER]: handle.sessionId,
-            },
-            status: 202,
-          },
-        );
+        const startFailure = await completeSessionStart({
+          auth: messageResult.auth,
+          config: input,
+          request: req,
+          routeArgs: args,
+          sessionId: handle.sessionId,
+        });
+        return startFailure ?? acceptedSessionResponse(handle.sessionId);
       }),
 
       POST(EVE_SESSION_ROUTE_PATTERN, async (req, { attachSession, params }) => {
@@ -679,6 +688,54 @@ export function eveChannel(input: EveChannelInput): EveChannel {
     ],
     events: input.events,
   });
+}
+
+function acceptedSessionResponse(sessionId: string): Response {
+  return Response.json(
+    { ok: true, sessionId, status: "accepted" },
+    {
+      headers: {
+        "cache-control": "no-store",
+        [EVE_SESSION_ID_HEADER]: sessionId,
+      },
+      status: 202,
+    },
+  );
+}
+
+async function completeSessionStart(input: {
+  readonly auth: SessionAuthContext | null;
+  readonly config: EveChannelInput;
+  readonly request: Request;
+  readonly routeArgs: Parameters<typeof readRouteSessionStarter>[0];
+  readonly sessionId: string;
+}): Promise<Response | null> {
+  if (input.config.beforeSessionStart === undefined) return null;
+  const startSession = readRouteSessionStarter(input.routeArgs);
+  if (startSession === undefined) {
+    return Response.json(
+      { error: "Session start setup requires internal channel dispatch context.", ok: false },
+      { status: 500 },
+    );
+  }
+
+  try {
+    await input.config.beforeSessionStart({
+      auth: input.auth,
+      request: input.request,
+      sessionId: input.sessionId,
+    });
+    await startSession(input.sessionId);
+    return null;
+  } catch (error) {
+    const errorId = logError(log, "session-start setup failed", error, {
+      sessionId: input.sessionId,
+    });
+    return Response.json(
+      { error: "Failed to start the session.", errorId, ok: false },
+      { status: 500 },
+    );
+  }
 }
 
 async function findRemoteSubagentBinding(input: {

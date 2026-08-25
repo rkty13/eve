@@ -139,6 +139,7 @@ export class EveAgentStore<TData> {
 
   #activeTurn: ActiveTurn | undefined;
   #callbacks: EveAgentStoreCallbacks<TData> = {};
+  #createOperationId: string | undefined;
   #data: TData;
   #error: Error | undefined;
   #events: readonly MessageStreamEvent[];
@@ -406,6 +407,7 @@ export class EveAgentStore<TData> {
     turn?.resolveCompletion();
     turn?.abortController.abort();
     if (!this.#externalSession) this.#session = undefined;
+    this.#createOperationId = undefined;
     this.#events = [];
     this.#seenEvents = createEventDeduper();
     this.#pendingMessageSubmissions = [];
@@ -487,7 +489,13 @@ export class EveAgentStore<TData> {
     if (input.message === undefined) {
       throw new Error("Cannot answer an input request before the session starts.");
     }
-    const created = await this.#client.sessions.create({ ...input, message: input.message });
+    this.#createOperationId ??= crypto.randomUUID();
+    const created = await this.#client.sessions.create({
+      ...input,
+      message: input.message,
+      operationId: this.#createOperationId,
+    });
+    this.#createOperationId = undefined;
     this.#session = created.session;
     this.#callbacks.onSessionChange?.(created.session.state);
     this.#publish();

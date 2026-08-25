@@ -5,7 +5,10 @@ import { buildAdapterContext } from "#channel/adapter-context.js";
 import { callAdapterEventHandler, type ChannelAdapter } from "#channel/adapter.js";
 import { isCompiledChannel } from "#channel/compiled-channel.js";
 import { RuntimeSessionOwnershipConflictError } from "#execution/runtime-errors.js";
-import { attachRouteSessionCreator } from "#internal/nitro/routes/channel-route-context.js";
+import {
+  attachRouteSessionCreator,
+  attachRouteSessionStarter,
+} from "#internal/nitro/routes/channel-route-context.js";
 import { mockChannelContext } from "#internal/testing/mocks/mock-channel-operations.js";
 import { type AuthFn, none } from "#public/channels/auth.js";
 import { eveChannel, defaultEveAuth, type EveChannelInput } from "#public/channels/eve.js";
@@ -49,7 +52,14 @@ const OVERRIDE_AUTH: SessionAuthContext = {
 
 type MockSendOptions = Pick<
   RunInput,
-  "auth" | "callback" | "capabilities" | "continuationToken" | "initiatorAuth" | "mode" | "title"
+  | "auth"
+  | "callback"
+  | "capabilities"
+  | "continuationToken"
+  | "initiatorAuth"
+  | "mode"
+  | "startBarrier"
+  | "title"
 >;
 
 function createJsonMessageRequest(body: unknown): Request {
@@ -116,6 +126,7 @@ function createEveCreateHandler(
     );
 
   const mockSend = vi.fn().mockResolvedValue(createMockSession());
+  const startSession = vi.fn().mockResolvedValue(undefined);
   const createSession = vi.fn(async (runInput: RunInput) => {
     const payload =
       runInput.input.context === undefined && runInput.input.outputSchema === undefined
@@ -128,6 +139,7 @@ function createEveCreateHandler(
       continuationToken: runInput.continuationToken,
       initiatorAuth: runInput.initiatorAuth,
       mode: runInput.mode,
+      startBarrier: runInput.startBarrier,
       title: runInput.title,
     } satisfies MockSendOptions);
     return {
@@ -140,10 +152,11 @@ function createEveCreateHandler(
     createSession,
     resolveSession,
     send: mockSend,
+    startSession,
     async fetch(req: Request) {
-      const args = attachRouteSessionCreator(
-        { ...createRouteArgs(), resolveSession },
-        createSession as never,
+      const args = attachRouteSessionStarter(
+        attachRouteSessionCreator({ ...createRouteArgs(), resolveSession }, createSession as never),
+        startSession,
       );
       return (createRoute as any).handler(req, args);
     },
@@ -880,6 +893,60 @@ describe("eveChannel — onMessage", () => {
 });
 
 describe("eveChannel — create session idempotency", () => {
+  it("awaits required session setup before releasing the first turn", async () => {
+    const setup = Promise.withResolvers<void>();
+    const beforeSessionStart = vi.fn(() => setup.promise);
+    const handler = createEveCreateHandler({
+      auth: () => ACCEPTED_AUTH,
+      beforeSessionStart,
+    });
+
+    const responsePromise = handler.fetch(createJsonMessageRequest({ message: "hi" }));
+    await vi.waitFor(() => expect(beforeSessionStart).toHaveBeenCalledOnce());
+    expect(handler.startSession).not.toHaveBeenCalled();
+
+    setup.resolve();
+    const response = await responsePromise;
+
+    expect(response.status).toBe(202);
+    expect(handler.send).toHaveBeenCalledWith(
+      "hi",
+      expect.objectContaining({ startBarrier: true }),
+    );
+    expect(handler.startSession).toHaveBeenCalledWith("test-session-id");
+  });
+
+  it("keeps the session gated when required setup fails", async () => {
+    const handler = createEveCreateHandler({
+      auth: () => ACCEPTED_AUTH,
+      beforeSessionStart: vi.fn().mockRejectedValue(new Error("database unavailable")),
+    });
+
+    const response = await handler.fetch(createJsonMessageRequest({ message: "hi" }));
+
+    expect(response.status).toBe(500);
+    expect(handler.startSession).not.toHaveBeenCalled();
+  });
+
+  it("reruns required setup for a create-once replay without dispatching twice", async () => {
+    const beforeSessionStart = vi.fn().mockResolvedValue(undefined);
+    const handler = createEveCreateHandler(
+      { auth: () => ACCEPTED_AUTH, beforeSessionStart },
+      { activeSessionId: "child-1" },
+    );
+
+    const response = await handler.fetch(
+      createJsonMessageRequest({ message: "hi", operationId: "operation-1" }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(handler.createSession).not.toHaveBeenCalled();
+    expect(beforeSessionStart).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "child-1" }),
+    );
+    expect(handler.startSession).toHaveBeenCalledWith("child-1");
+  });
+
   it("creates once for an operation id and uses it as the continuation token", async () => {
     const handler = createEveCreateHandler({ auth: () => ACCEPTED_AUTH });
 
